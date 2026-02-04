@@ -677,6 +677,92 @@ async def get_picks(
             detail="Não consegui atualizar os picks agora. Tente novamente em instantes."
         )
 
+# Internal chat endpoint (for Next.js API - auth handled by Next.js)
+@app.post("/api/internal/chat")
+async def chat_internal(
+    message: ChatMessageRequest,
+    x_internal_key: str = Header(None),
+    x_user_id: str = Header(None),
+    x_user_email: str = Header(None),
+    session: Session = Depends(get_session)
+):
+    """Internal endpoint for chat - called by Next.js API after auth verification"""
+    internal_key = os.getenv("INTERNAL_API_KEY", "betfaro_internal_2024")
+    if x_internal_key != internal_key:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid internal key"
+        )
+    
+    if not x_user_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="User ID required"
+        )
+    
+    # Get user from database
+    user = session.exec(select(User).where(User.id == x_user_id)).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+    
+    # Check subscription
+    if not check_user_subscription(user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Active subscription required to use chat"
+        )
+    
+    # Save user message
+    user_message = ChatMessage(
+        user_id=user.id,
+        role="user",
+        content=message.content,
+        extra_data=None,
+        created_at=datetime.utcnow()
+    )
+    session.add(user_message)
+    
+    # Process message
+    try:
+        response = await chatbot.process_message(message.content, user)
+        
+        # Save bot response
+        bot_message = ChatMessage(
+            user_id=user.id,
+            role="assistant",
+            content=response,
+            extra_data=None,
+            created_at=datetime.utcnow()
+        )
+        session.add(bot_message)
+        session.commit()
+        
+        logger.info(f"Internal chat processed for user {user.email}")
+        
+        return ChatResponse(
+            response=response,
+            timestamp=datetime.utcnow()
+        )
+        
+    except Exception as e:
+        import traceback
+        error_trace = traceback.format_exc()
+        logger.error(f"Internal chat processing error: {str(e)}\n{error_trace}")
+        
+        error_response = "⚠️ A API está instável agora. Tente novamente em alguns segundos.\n\n"
+        error_response += "Se o problema persistir, verifique:\n"
+        error_response += "  • Se os nomes dos times estão corretos\n"
+        error_response += "  • Use o formato: Time A x Time B\n\n"
+        error_response += "💡 Exemplos: Arsenal x Chelsea, Benfica vs Porto"
+        
+        return ChatResponse(
+            response=error_response,
+            timestamp=datetime.utcnow()
+        )
+
 # Internal picks endpoint (for Next.js API - no auth required, auth handled by Next.js)
 @app.get("/api/internal/picks")
 async def get_picks_internal(

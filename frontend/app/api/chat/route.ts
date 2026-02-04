@@ -18,9 +18,9 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json()
 
-    // Forward request to backend
+    // Forward request to backend internal endpoint
     const backendResponse = await fetch(
-      `${BACKEND_URL}/api/chat`,
+      `${BACKEND_URL}/api/internal/chat`,
       {
         method: 'POST',
         headers: {
