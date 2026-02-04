@@ -1,6 +1,7 @@
 """
 TeamResolver - Módulo robusto para resolução de nomes de times
 Prioriza times brasileiros quando o contexto indica Brasil
+Usa índice global para busca dinâmica (não depende de ligas hardcoded)
 """
 import unicodedata
 import re
@@ -9,6 +10,152 @@ from typing import Dict, List, Optional, Tuple
 from difflib import SequenceMatcher
 
 logger = logging.getLogger(__name__)
+
+# Aliases brasileiros expandidos (apelidos populares → nome normalizado)
+BRAZILIAN_ALIASES_EXPANDED = {
+    # Série A - Apelidos
+    "galo": "atletico mineiro",
+    "atletico mg": "atletico mineiro",
+    "atletico-mg": "atletico mineiro",
+    "atl mineiro": "atletico mineiro",
+    "cam": "atletico mineiro",
+    "atlético mineiro": "atletico mineiro",
+    "atlético-mg": "atletico mineiro",
+    "atlético mg": "atletico mineiro",
+    
+    "mengao": "flamengo",
+    "mengo": "flamengo",
+    "fla": "flamengo",
+    "urubu": "flamengo",
+    
+    "verdao": "palmeiras",
+    "porco": "palmeiras",
+    "palestra": "palmeiras",
+    
+    "timao": "corinthians",
+    "coringao": "corinthians",
+    "todo poderoso": "corinthians",
+    
+    "tricolor paulista": "sao paulo",
+    "spfc": "sao paulo",
+    "soberano": "sao paulo",
+    
+    "peixe": "santos",
+    "santastico": "santos",
+    "alvinegro praiano": "santos",
+    
+    "imortal": "gremio",
+    "tricolor gaucho": "gremio",
+    "grêmio": "gremio",
+    
+    "colorado": "internacional",
+    "inter de porto alegre": "internacional",
+    "inter rs": "internacional",
+    
+    "raposa": "cruzeiro",
+    "celeste": "cruzeiro",
+    
+    "fogao": "botafogo",
+    "glorioso": "botafogo",
+    "estrela solitaria": "botafogo",
+    
+    "flu": "fluminense",
+    "tricolor carioca": "fluminense",
+    "po de arroz": "fluminense",
+    
+    "vascao": "vasco da gama",
+    "vasco": "vasco da gama",
+    "gigante da colina": "vasco da gama",
+    
+    "furacao": "athletico paranaense",
+    "cap": "athletico paranaense",
+    "athletico pr": "athletico paranaense",
+    "athletico-pr": "athletico paranaense",
+    "atletico paranaense": "athletico paranaense",
+    
+    "leao": "fortaleza",
+    "tricolor de aco": "fortaleza",
+    "fortaleza ec": "fortaleza",
+    
+    "esquadrao": "bahia",
+    "tricolor baiano": "bahia",
+    "bahea": "bahia",
+    
+    "dourado": "cuiaba",
+    "cuiabá": "cuiaba",
+    
+    "massa bruta": "bragantino",
+    "rb bragantino": "bragantino",
+    "red bull bragantino": "bragantino",
+    "redbull bragantino": "bragantino",
+    
+    "leao da barra": "vitoria",
+    "vitória": "vitoria",
+    "ec vitoria": "vitoria",
+    
+    "tigre": "criciuma",
+    "criciúma": "criciuma",
+    
+    "papo": "juventude",
+    
+    # Série B
+    "leao da ilha": "sport recife",
+    "sport": "sport recife",
+    
+    "vozao": "ceara",
+    "ceará": "ceara",
+    
+    "coxa": "coritiba",
+    "coxa branca": "coritiba",
+    
+    "chape": "chapecoense",
+    
+    "macaca": "ponte preta",
+    
+    "bugre": "guarani",
+    
+    "tigrao": "novorizontino",
+    
+    "leao amarelo": "mirassol",
+    
+    "galo caipira": "ituano",
+    
+    "fantasma": "operario",
+    "operario pr": "operario",
+    "operário": "operario",
+    
+    "tigrao": "vila nova",
+    
+    "esmeraldino": "goias",
+    "goiás": "goias",
+    
+    "coelho": "america mineiro",
+    "america mg": "america mineiro",
+    "américa-mg": "america mineiro",
+    "américa mineiro": "america mineiro",
+    
+    "azulao": "csa",
+    
+    "alvinegro potiguar": "abc",
+    
+    "belo": "botafogo pb",
+    "botafogo-pb": "botafogo pb",
+    
+    "timbu": "nautico",
+    "náutico": "nautico",
+    
+    "cobra coral": "santa cruz",
+    
+    "leao azul": "remo",
+    
+    "papao": "paysandu",
+    "paysandú": "paysandu",
+    
+    "bolinha": "sampaio correa",
+    "sampaio corrêa": "sampaio correa",
+    
+    "gaviao": "tombense",
+}
 
 class TeamResolver:
     """
@@ -69,67 +216,8 @@ class TeamResolver:
         "tombense": {"id": 7776, "name": "Tombense", "country": "Brazil"},
     }
     
-    # Aliases brasileiros (apelidos populares)
-    BRAZILIAN_ALIASES = {
-        # Apelidos
-        "galo": "atletico mineiro",
-        "mengao": "flamengo",
-        "mengo": "flamengo",
-        "fla": "flamengo",
-        "verdao": "palmeiras",
-        "porco": "palmeiras",
-        "timao": "corinthians",
-        "coringao": "corinthians",
-        "tricolor paulista": "sao paulo",
-        "spfc": "sao paulo",
-        "peixe": "santos",
-        "santastico": "santos",
-        "imortal": "gremio",
-        "tricolor gaucho": "gremio",
-        "colorado": "internacional",
-        "inter de porto alegre": "internacional",
-        "raposa": "cruzeiro",
-        "celeste": "cruzeiro",
-        "fogao": "botafogo",
-        "glorioso": "botafogo",
-        "flu": "fluminense",
-        "tricolor carioca": "fluminense",
-        "vascao": "vasco da gama",
-        "gigante da colina": "vasco da gama",
-        "furacao": "athletico paranaense",
-        "cap": "athletico paranaense",
-        "leao": "fortaleza",
-        "tricolor de aco": "fortaleza",
-        "esquadrao": "bahia",
-        "tricolor baiano": "bahia",
-        "dourado": "cuiaba",
-        "massa bruta": "bragantino",
-        "leao da barra": "vitoria",
-        "tigre": "criciuma",
-        "papo": "juventude",
-        
-        # Variações de escrita
-        "atletico mg": "atletico mineiro",
-        "atletico-mg": "atletico mineiro",
-        "atl mineiro": "atletico mineiro",
-        "cam": "atletico mineiro",
-        "athletico pr": "athletico paranaense",
-        "athletico-pr": "athletico paranaense",
-        "atl paranaense": "athletico paranaense",
-        "rb bragantino": "bragantino",
-        "red bull bragantino": "bragantino",
-        "redbull bragantino": "bragantino",
-        "vasco": "vasco da gama",
-        "america mg": "america mineiro",
-        "america-mg": "america mineiro",
-        "operario pr": "operario",
-        "operario-pr": "operario",
-        "botafogo-pb": "botafogo pb",
-        "chapecoense sc": "chapecoense",
-        "chapecoense-sc": "chapecoense",
-        "fortaleza ec": "fortaleza",
-        "ec vitoria": "vitoria",
-    }
+    # Usar aliases expandidos do módulo
+    BRAZILIAN_ALIASES = BRAZILIAN_ALIASES_EXPANDED
     
     # Indicadores de contexto brasileiro
     BRAZIL_INDICATORS = [
