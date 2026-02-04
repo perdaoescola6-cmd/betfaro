@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { 
@@ -73,7 +73,7 @@ const plans = [
   }
 ]
 
-export default function PlansPage() {
+function PlansContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [user, setUser] = useState<any>(null)
@@ -370,5 +370,20 @@ export default function PlansPage() {
         </div>
       )}
     </div>
+  )
+}
+
+export default function PlansPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-dark-bg">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
+          <p className="text-gray-400">Carregando planos...</p>
+        </div>
+      </div>
+    }>
+      <PlansContent />
+    </Suspense>
   )
 }
