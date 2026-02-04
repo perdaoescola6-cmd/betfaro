@@ -22,6 +22,13 @@ interface UserData {
   } | null
 }
 
+interface Suggestion {
+  label: string
+  query: string
+  league?: string
+  kickoffTime?: string
+}
+
 export default function Home() {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
@@ -32,14 +39,16 @@ export default function Home() {
   const [isCheckingAuth, setIsCheckingAuth] = useState(true)
   const [showClearModal, setShowClearModal] = useState(false)
   const [showHelpTooltip, setShowHelpTooltip] = useState(false)
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([])
+  const [suggestionsLoading, setSuggestionsLoading] = useState(true)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const supabase = createClient()
 
-  const quickSuggestions = [
-    "Benfica x Porto",
-    "Chelsea over 2.5 last 10",
-    "Atlético Mineiro win rate",
-    "Liverpool vs Manchester City"
+  const fallbackSuggestions: Suggestion[] = [
+    { label: "Flamengo x Palmeiras", query: "Flamengo x Palmeiras" },
+    { label: "Real Madrid x Barcelona", query: "Real Madrid x Barcelona" },
+    { label: "Arsenal x Chelsea", query: "Arsenal x Chelsea" },
+    { label: "Benfica x Porto", query: "Benfica x Porto" },
   ]
 
   useEffect(() => {
@@ -63,6 +72,32 @@ export default function Home() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, isLoading])
+
+  // Load dynamic suggestions on mount
+  useEffect(() => {
+    const loadSuggestions = async () => {
+      setSuggestionsLoading(true)
+      try {
+        const response = await fetch('/api/suggestions?day=today')
+        if (response.ok) {
+          const data = await response.json()
+          if (data.suggestions && data.suggestions.length > 0) {
+            setSuggestions(data.suggestions)
+          } else {
+            setSuggestions(fallbackSuggestions)
+          }
+        } else {
+          setSuggestions(fallbackSuggestions)
+        }
+      } catch (error) {
+        console.error('Failed to load suggestions:', error)
+        setSuggestions(fallbackSuggestions)
+      } finally {
+        setSuggestionsLoading(false)
+      }
+    }
+    loadSuggestions()
+  }, [])
 
   const checkAuth = async () => {
     setIsCheckingAuth(true)
@@ -132,11 +167,16 @@ export default function Home() {
 
   const sendMessage = async () => {
     if (!input.trim() || isLoading) return
+    await sendMessageWithQuery(input)
+  }
+
+  const sendMessageWithQuery = async (query: string) => {
+    if (!query.trim() || isLoading) return
 
     const userMessage: Message = {
       id: Date.now().toString(),
       role: 'user',
-      content: input,
+      content: query,
       timestamp: new Date()
     }
 
@@ -152,7 +192,7 @@ export default function Home() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ content: input })
+        body: JSON.stringify({ content: query })
       })
 
       if (response.ok) {
@@ -481,15 +521,28 @@ export default function Home() {
                   Digite um jogo para começar sua análise
                 </p>
                 <div className="flex flex-wrap justify-center gap-2">
-                  {quickSuggestions.map((suggestion, index) => (
-                    <button
-                      key={index}
-                      onClick={() => setInput(suggestion)}
-                      className="btn-secondary text-sm"
-                    >
-                      {suggestion}
-                    </button>
-                  ))}
+                  {suggestionsLoading ? (
+                    <div className="flex items-center space-x-2 text-gray-400">
+                      <div className="animate-spin h-4 w-4 border-2 border-blue-500 border-t-transparent rounded-full"></div>
+                      <span className="text-sm">Carregando jogos...</span>
+                    </div>
+                  ) : (
+                    suggestions.map((suggestion, index) => (
+                      <button
+                        key={index}
+                        onClick={() => sendMessageWithQuery(suggestion.query)}
+                        className="btn-secondary text-sm group relative"
+                        title={suggestion.league || ''}
+                      >
+                        <span>{suggestion.label}</span>
+                        {suggestion.league && (
+                          <span className="ml-1 text-xs text-gray-500 hidden group-hover:inline">
+                            ({suggestion.league})
+                          </span>
+                        )}
+                      </button>
+                    ))
+                  )}
                 </div>
               </div>
             ) : (
