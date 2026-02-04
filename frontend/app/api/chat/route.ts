@@ -16,6 +16,16 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Check subscription in Supabase
+    const { data: subscription } = await supabase
+      .from('subscriptions')
+      .select('plan, status')
+      .eq('user_id', user.id)
+      .maybeSingle()
+
+    const hasActiveSubscription = subscription && subscription.status === 'active'
+    const userPlan = subscription?.plan || 'free'
+
     const body = await request.json()
 
     // Forward request to backend internal endpoint
@@ -28,6 +38,8 @@ export async function POST(request: NextRequest) {
           'X-Internal-Key': INTERNAL_API_KEY,
           'X-User-Id': user.id,
           'X-User-Email': user.email || '',
+          'X-User-Plan': userPlan,
+          'X-Has-Subscription': hasActiveSubscription ? 'true' : 'false',
         },
         body: JSON.stringify(body),
       }

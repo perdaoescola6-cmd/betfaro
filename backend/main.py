@@ -684,6 +684,8 @@ async def chat_internal(
     x_internal_key: str = Header(None),
     x_user_id: str = Header(None),
     x_user_email: str = Header(None),
+    x_user_plan: str = Header(None),
+    x_has_subscription: str = Header(None),
     session: Session = Depends(get_session)
 ):
     """Internal endpoint for chat - called by Next.js API after auth verification"""
@@ -698,6 +700,14 @@ async def chat_internal(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="User ID required"
+        )
+    
+    # Check subscription (passed from Next.js which checks Supabase)
+    has_subscription = x_has_subscription == 'true'
+    if not has_subscription:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Assinatura ativa necessária para usar o chat. Acesse a página de Planos para assinar."
         )
     
     # Get user from database or create if not exists (sync from Supabase)
@@ -716,13 +726,6 @@ async def chat_internal(
         session.commit()
         session.refresh(user)
         logger.info(f"Auto-created user from Supabase: {x_user_email}")
-    
-    # Check subscription
-    if not check_user_subscription(user):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Active subscription required to use chat"
-        )
     
     # Save user message
     user_message = ChatMessage(
