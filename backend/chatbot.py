@@ -1,13 +1,18 @@
 from typing import Dict, List, Optional, Tuple
 import asyncio
 import re
+import logging
 from datetime import datetime
 from football_api import FootballAPI
 from models import User, Subscription
+from team_resolver import TeamResolver
+
+logger = logging.getLogger(__name__)
 
 class ChatBot:
     def __init__(self):
         self.api = FootballAPI()
+        self.team_resolver = TeamResolver(self.api)
         
         # Market patterns for intelligent parsing
         self.market_patterns = {
@@ -41,10 +46,10 @@ class ChatBot:
         try:
             original_input = user_input.strip()
             
-            # ═══════════════════════════════════════════════════════════════
-            # 0. CHECK PLAN LIMITS (Feature-gating)
-            # ═══════════════════════════════════════════════════════════════
-            if not self._check_analysis_limit(user):
+            # ═════════════════════════════════════════════════════════════════
+            # 0. CHECK PLAN LIMITS (Feature-gating) - Only check, don't consume yet
+            # ═════════════════════════════════════════════════════════════════
+            if not self._has_remaining_quota(user):
                 return self._format_limit_reached(user)
             
             # ═══════════════════════════════════════════════════════════════
@@ -442,7 +447,10 @@ class ChatBot:
         return "\n".join(lines)
     
     async def _analyze_match(self, parsed: Dict, user: User) -> str:
-        """Analyze match between two teams with strict data validation"""
+        """Analyze match between two teams with strict data validation
+        
+        IMPORTANT: Only consumes quota if analysis is successful!
+        """
         team_a_name = parsed["team_a"]
         team_b_name = parsed["team_b"]
         REQUIRED_GAMES = 10  # FIXED: Always 10 games per team
@@ -450,15 +458,33 @@ class ChatBot:
         odds = parsed.get("odds", [])
         
         # ═══════════════════════════════════════════════════════════════
-        # STEP 1: RESOLVE TEAMS
+        # STEP 1: RESOLVE TEAMS using TeamResolver (with Brazil priority)
         # ═══════════════════════════════════════════════════════════════
-        team_a = await self.api.resolve_team(team_a_name)
-        if not team_a:
-            return self._format_friendly_fallback(f"{team_a_name} vs {team_b_name}")
+        logger.info(f"Resolving match: {team_a_name} vs {team_b_name}")
         
-        team_b = await self.api.resolve_team(team_b_name, context_fixtures=[])
-        if not team_b:
-            return self._format_friendly_fallback(f"{team_a_name} vs {team_b_name}")
+        match_result = await self.team_resolver.resolve_match(team_a_name, team_b_name)
+        
+        # Handle ambiguous names - DON'T consume quota
+        if match_result.get("ambiguous"):
+            return self._format_ambiguous_teams(match_result)
+        
+        # Handle resolution failure - DON'T consume quota
+        if not match_result.get("success"):
+            return self._format_team_not_found(team_a_name, team_b_name, match_result)
+        
+        team_a = {
+            "id": match_result["team1"]["team_id"],
+            "name": match_result["team1"]["team_name"],
+            "country": match_result["team1"]["country"]
+        }
+        team_b = {
+            "id": match_result["team2"]["team_id"],
+            "name": match_result["team2"]["team_name"],
+            "country": match_result["team2"]["country"]
+        }
+        
+        confidence = match_result.get("confidence", 0)
+        logger.info(f"Teams resolved: {team_a['name']} vs {team_b['name']} (confidence: {confidence:.0%})")
         
         # ═══════════════════════════════════════════════════════════════
         # STEP 2: FETCH FIXTURES (get extra for filtering)
@@ -472,7 +498,7 @@ class ChatBot:
         validated_a = self._validate_fixtures(fixtures_a_raw, team_a["id"], REQUIRED_GAMES)
         validated_b = self._validate_fixtures(fixtures_b_raw, team_b["id"], REQUIRED_GAMES)
         
-        # Check if we have enough valid data
+        # Check if we have enough valid data - DON'T consume quota if not
         if not validated_a["valid"] or not validated_b["valid"]:
             return self._format_data_error(team_a["name"], team_b["name"], validated_a, validated_b)
         
@@ -482,13 +508,65 @@ class ChatBot:
         # ═══════════════════════════════════════════════════════════════
         # STEP 4: GENERATE ANALYSIS WITH VERIFIED DATA
         # ═══════════════════════════════════════════════════════════════
-        return self._generate_match_analysis(
+        analysis = self._generate_match_analysis(
             team_a, team_b, 
             filtered_a, filtered_b, 
             "LAST_10",  # Always last 10 games
             markets, odds,
-            validated_a["date_range"], validated_b["date_range"]
+            validated_a["date_range"], validated_b["date_range"],
+            confidence  # Pass confidence for display
         )
+        
+        # ═══════════════════════════════════════════════════════════════
+        # STEP 5: CONSUME QUOTA - Only after successful analysis!
+        # ═══════════════════════════════════════════════════════════════
+        self._consume_quota(user)
+        
+        return analysis
+    
+    def _format_ambiguous_teams(self, match_result: Dict) -> str:
+        """Format message when team names are ambiguous"""
+        lines = []
+        lines.append("🔍 Não encontrei esse jogo com segurança.")
+        lines.append("─────────────────────────────────────────────────────────")
+        lines.append("")
+        lines.append("Você quis dizer:")
+        lines.append("")
+        
+        if match_result["team1"].get("ambiguous"):
+            for suggestion in match_result["team1"].get("suggestions", [])[:3]:
+                lines.append(f"  • {suggestion}")
+        if match_result["team2"].get("ambiguous"):
+            for suggestion in match_result["team2"].get("suggestions", [])[:3]:
+                lines.append(f"  • {suggestion}")
+        
+        lines.append("")
+        lines.append("💡 Dica: Use o nome completo do time:")
+        lines.append("  • Atlético-MG x RB Bragantino ✓")
+        lines.append("  • Flamengo x Internacional ✓")
+        lines.append("")
+        lines.append("⚠️ Esta consulta NÃO consumiu sua cota.")
+        
+        return "\n".join(lines)
+    
+    def _format_team_not_found(self, team_a: str, team_b: str, match_result: Dict) -> str:
+        """Format message when teams cannot be found"""
+        lines = []
+        lines.append("🔍 Não encontrei esse jogo com segurança.")
+        lines.append("─────────────────────────────────────────────────────────")
+        lines.append("")
+        lines.append("Verifique se os nomes dos times estão corretos.")
+        lines.append("")
+        lines.append("💡 Dica: Use o nome completo do time:")
+        lines.append("  • Arsenal x Chelsea ✓")
+        lines.append("  • Man United vs Liverpool ✓")
+        lines.append("  • Benfica x Porto ✓")
+        lines.append("")
+        lines.append("Digite /help para ver todos os comandos disponíveis.")
+        lines.append("")
+        lines.append("⚠️ Esta consulta NÃO consumiu sua cota.")
+        
+        return "\n".join(lines)
     
     def _validate_fixtures(self, fixtures: List[Dict], team_id: int, required: int) -> Dict:
         """Validate fixtures - ensure data quality before analysis
@@ -690,7 +768,7 @@ class ChatBot:
         
         return filtered
     
-    def _generate_match_analysis(self, team_a: Dict, team_b: Dict, fixtures_a: List[Dict], fixtures_b: List[Dict], split_mode: str, markets: List[str] = None, odds: List[str] = None, date_range_a: Dict = None, date_range_b: Dict = None) -> str:
+    def _generate_match_analysis(self, team_a: Dict, team_b: Dict, fixtures_a: List[Dict], fixtures_b: List[Dict], split_mode: str, markets: List[str] = None, odds: List[str] = None, date_range_a: Dict = None, date_range_b: Dict = None, confidence: float = 1.0) -> str:
         """Generate premium match analysis - Bloomberg/TradingView style"""
         from datetime import datetime
         
@@ -1281,45 +1359,66 @@ class ChatBot:
         
         return trends
     
-    def _check_analysis_limit(self, user: User) -> bool:
-        """Check if user has remaining analyses for today based on their plan"""
+    def _get_user_plan(self, user: User) -> str:
+        """Get user's plan safely"""
+        plan = 'free'
+        subscription = getattr(user, 'subscription', None)
+        if subscription:
+            sub_plan = getattr(subscription, 'plan', None)
+            if sub_plan:
+                plan = sub_plan.lower()
+        return plan
+    
+    def _has_remaining_quota(self, user: User) -> bool:
+        """Check if user has remaining quota WITHOUT consuming it"""
         from datetime import date
         
         try:
-            # Get user's plan with safe access
-            plan = 'free'
-            subscription = getattr(user, 'subscription', None)
-            if subscription:
-                sub_plan = getattr(subscription, 'plan', None)
-                if sub_plan:
-                    plan = sub_plan.lower()
-            
-            # Get daily limit for plan
+            plan = self._get_user_plan(user)
             daily_limit = self.PLAN_LIMITS.get(plan, 5)
             
-            # Get today's usage count
             today = date.today().isoformat()
-            
-            # Use a class-level cache instead of user object to avoid issues
             if not hasattr(self, '_usage_cache'):
                 self._usage_cache = {}
             
             user_id = getattr(user, 'id', 'anonymous')
             cache_key = f"{user_id}_{today}"
+            current_usage = self._usage_cache.get(cache_key, 0)
             
+            return current_usage < daily_limit
+        except Exception as e:
+            logger.warning(f"Error checking quota: {e}")
+            return True
+    
+    def _consume_quota(self, user: User) -> bool:
+        """Consume one quota unit - ONLY call after successful analysis"""
+        from datetime import date
+        
+        try:
+            plan = self._get_user_plan(user)
+            daily_limit = self.PLAN_LIMITS.get(plan, 5)
+            
+            today = date.today().isoformat()
+            if not hasattr(self, '_usage_cache'):
+                self._usage_cache = {}
+            
+            user_id = getattr(user, 'id', 'anonymous')
+            cache_key = f"{user_id}_{today}"
             current_usage = self._usage_cache.get(cache_key, 0)
             
             if current_usage >= daily_limit:
                 return False
             
-            # Increment usage
             self._usage_cache[cache_key] = current_usage + 1
+            logger.info(f"Quota consumed for user {user_id}: {current_usage + 1}/{daily_limit}")
             return True
         except Exception as e:
-            # If any error, allow the request (fail open)
-            import logging
-            logging.getLogger(__name__).warning(f"Error checking limit: {e}")
+            logger.warning(f"Error consuming quota: {e}")
             return True
+    
+    def _check_analysis_limit(self, user: User) -> bool:
+        """DEPRECATED: Use _has_remaining_quota and _consume_quota instead"""
+        return self._has_remaining_quota(user)
     
     def _format_limit_reached(self, user: User) -> str:
         """Format message when user reaches their daily analysis limit"""

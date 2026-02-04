@@ -824,6 +824,103 @@ async def get_picks_internal(
             detail="Não consegui atualizar os picks agora. Tente novamente em instantes."
         )
 
+# Suggestions endpoint - get today's and tomorrow's matches
+@app.get("/api/suggestions")
+async def get_suggestions(day: str = "today"):
+    """Get match suggestions for today or tomorrow"""
+    from datetime import date, timedelta
+    
+    try:
+        # Calculate target date
+        if day == "tomorrow":
+            target_date = date.today() + timedelta(days=1)
+        else:
+            target_date = date.today()
+        
+        date_str = target_date.strftime("%Y-%m-%d")
+        
+        # Priority leagues (IDs from API-Football)
+        PRIORITY_LEAGUES = {
+            # Brazil
+            71: 10,   # Série A
+            72: 8,    # Série B
+            # Europe Top 5
+            39: 10,   # Premier League
+            140: 10,  # La Liga
+            135: 10,  # Serie A
+            78: 10,   # Bundesliga
+            61: 10,   # Ligue 1
+            # Other important
+            2: 9,     # Champions League
+            3: 8,     # Europa League
+            94: 7,    # Primeira Liga (Portugal)
+            88: 6,    # Eredivisie
+            # Copa do Brasil
+            73: 8,    # Copa do Brasil
+        }
+        
+        # Fetch fixtures for the date
+        fixtures = await chatbot.api._make_request("fixtures", {"date": date_str})
+        
+        if not fixtures:
+            # Return default suggestions if API fails
+            return {
+                "suggestions": [
+                    {"label": "Flamengo x Palmeiras", "query": "Flamengo x Palmeiras"},
+                    {"label": "Arsenal x Chelsea", "query": "Arsenal x Chelsea"},
+                    {"label": "Real Madrid x Barcelona", "query": "Real Madrid x Barcelona"},
+                    {"label": "Benfica x Porto", "query": "Benfica x Porto"},
+                ],
+                "date": date_str,
+                "source": "fallback"
+            }
+        
+        # Score and sort fixtures
+        scored_fixtures = []
+        for fixture in fixtures:
+            league_id = fixture.get("league", {}).get("id")
+            league_priority = PRIORITY_LEAGUES.get(league_id, 1)
+            
+            home_team = fixture.get("teams", {}).get("home", {}).get("name", "")
+            away_team = fixture.get("teams", {}).get("away", {}).get("name", "")
+            
+            if home_team and away_team:
+                scored_fixtures.append({
+                    "label": f"{home_team} x {away_team}",
+                    "query": f"{home_team} x {away_team}",
+                    "priority": league_priority,
+                    "league": fixture.get("league", {}).get("name", ""),
+                    "time": fixture.get("fixture", {}).get("date", "")
+                })
+        
+        # Sort by priority (descending) and take top 10
+        scored_fixtures.sort(key=lambda x: x["priority"], reverse=True)
+        suggestions = scored_fixtures[:10]
+        
+        # Clean up response
+        for s in suggestions:
+            del s["priority"]
+        
+        return {
+            "suggestions": suggestions,
+            "date": date_str,
+            "source": "api"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting suggestions: {e}")
+        # Return fallback suggestions
+        return {
+            "suggestions": [
+                {"label": "Flamengo x Palmeiras", "query": "Flamengo x Palmeiras"},
+                {"label": "Arsenal x Chelsea", "query": "Arsenal x Chelsea"},
+                {"label": "Real Madrid x Barcelona", "query": "Real Madrid x Barcelona"},
+                {"label": "Benfica x Porto", "query": "Benfica x Porto"},
+            ],
+            "date": date.today().strftime("%Y-%m-%d"),
+            "source": "fallback"
+        }
+
 # Health check
 @app.get("/api/health")
 @app.get("/health")
