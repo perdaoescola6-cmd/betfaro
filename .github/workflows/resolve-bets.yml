@@ -1,0 +1,34 @@
+name: Resolve Pending Bets
+
+on:
+  schedule:
+    # Runs every 10 minutes
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+    # Allow manual trigger
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    
+    steps:
+      - name: Call Bet Resolver API
+        run: |
+          response=$(curl -s -w "\n%{http_code}" -X POST \
+            "https://betfaro.com.br/api/bets/resolve" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -H "Content-Type: application/json")
+          
+          http_code=$(echo "$response" | tail -n1)
+          body=$(echo "$response" | sed '$d')
+          
+          echo "HTTP Status: $http_code"
+          echo "Response: $body"
+          
+          if [ "$http_code" -ge 400 ]; then
+            echo "::error::API call failed with status $http_code"
+            exit 1
+          fi
+          
+          echo "✅ Bet resolver completed successfully"
