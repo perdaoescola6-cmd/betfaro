@@ -1,12 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-
-// Plan limits configuration
-const PLAN_LIMITS = {
-  free: { dailyAnalyses: 5, features: ['basic_analysis'] },
-  pro: { dailyAnalyses: 50, features: ['basic_analysis', 'advanced_stats', 'export'] },
-  elite: { dailyAnalyses: 100, features: ['basic_analysis', 'advanced_stats', 'export', 'picks', 'priority_support'] },
-}
+import { formatLimitsForApi, getPlanLimits } from '@/lib/plans'
+import { getUsageSummary } from '@/lib/usage'
 
 export async function GET(request: NextRequest) {
   try {
@@ -21,17 +16,24 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Fetch subscription from database
-    const { data: subscription, error: subError } = await supabase
+    // Fetch subscription from database (SINGLE SOURCE OF TRUTH)
+    const { data: subscription } = await supabase
       .from('subscriptions')
       .select('*')
       .eq('user_id', user.id)
-      .single()
+      .maybeSingle()
 
-    // Determine plan (default to free if no subscription)
-    const plan = subscription?.plan || 'free'
-    const status = subscription?.status || 'active'
-    const limits = PLAN_LIMITS[plan as keyof typeof PLAN_LIMITS] || PLAN_LIMITS.free
+    // Determine effective plan: if no active subscription, treat as free
+    const hasActiveSubscription = subscription && subscription.status === 'active'
+    const plan = hasActiveSubscription ? (subscription.plan || 'free') : 'free'
+    const status = subscription?.status || 'inactive'
+    
+    // Get plan limits
+    const limits = formatLimitsForApi(plan)
+    const planConfig = getPlanLimits(plan)
+    
+    // Get today's usage
+    const usage = await getUsageSummary(supabase, user.id, plan)
 
     // Return user data with no-cache headers
     return NextResponse.json(
@@ -40,7 +42,18 @@ export async function GET(request: NextRequest) {
         email: user.email,
         plan,
         status,
-        limits,
+        isElite: plan.toLowerCase() === 'elite',
+        limits: {
+          chat: limits.chat,
+          picks: limits.picks,
+          autoTrack: limits.autoTrack,
+          features: limits.features
+        },
+        usage: {
+          chatUsed: usage.chatUsed,
+          chatLimit: usage.chatLimit,
+          chatRemaining: usage.chatRemaining
+        },
         subscription: subscription ? {
           plan: subscription.plan,
           status: subscription.status,

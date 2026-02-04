@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { v4 as uuidv4 } from 'uuid'
+import { hasUnlimitedChat, getDailyChatLimit } from '@/lib/plans'
+import { checkChatLimit, incrementChatUsage } from '@/lib/usage'
 
 export const runtime = 'nodejs'
 
@@ -11,8 +13,13 @@ const TIMEOUT_MS = 30000 // 30 seconds
 interface ChatResponse {
   ok: boolean
   reply?: string
+  usage?: {
+    current: number
+    limit: number | 'unlimited'
+    remaining: number | 'unlimited'
+  }
   error?: {
-    code: 'UPSTREAM_DOWN' | 'BAD_REQUEST' | 'UNAUTHORIZED' | 'RATE_LIMIT' | 'NO_SUBSCRIPTION' | 'UNKNOWN'
+    code: 'UPSTREAM_DOWN' | 'BAD_REQUEST' | 'UNAUTHORIZED' | 'RATE_LIMIT' | 'NO_SUBSCRIPTION' | 'LIMIT_EXCEEDED' | 'UNKNOWN'
     message: string
   }
   debugId: string
@@ -37,26 +44,48 @@ export async function POST(request: NextRequest): Promise<NextResponse<ChatRespo
       )
     }
 
-    // 2. Check subscription in Supabase
+    // 2. Check subscription in Supabase (SINGLE SOURCE OF TRUTH)
     const { data: subscription } = await supabase
       .from('subscriptions')
       .select('plan, status')
       .eq('user_id', user.id)
       .maybeSingle()
 
+    // Determine effective plan: if no active subscription, treat as free
     const hasActiveSubscription = subscription && subscription.status === 'active'
-    const userPlan = subscription?.plan || 'free'
+    const userPlan = hasActiveSubscription ? (subscription.plan || 'free') : 'free'
+    const isElite = userPlan.toLowerCase() === 'elite'
     
-    console.log(`[${debugId}] User ${user.email} plan=${userPlan} hasSubscription=${hasActiveSubscription}`)
+    console.log(`[${debugId}] User ${user.email} plan=${userPlan} isElite=${isElite} hasSubscription=${hasActiveSubscription}`)
 
-    if (!hasActiveSubscription) {
-      return NextResponse.json(
-        { ok: false, error: { code: 'NO_SUBSCRIPTION', message: 'Assinatura ativa necessária. Acesse a página de Planos.' }, debugId },
-        { status: 403 }
-      )
+    // 3. Check daily usage limits (ELITE NEVER BLOCKED)
+    if (!isElite) {
+      const limitCheck = await checkChatLimit(supabase, user.id, userPlan)
+      
+      if (!limitCheck.allowed) {
+        console.log(`[${debugId}] User ${user.email} exceeded daily limit: ${limitCheck.currentUsage}/${limitCheck.limit}`)
+        return NextResponse.json(
+          { 
+            ok: false, 
+            error: { 
+              code: 'LIMIT_EXCEEDED', 
+              message: limitCheck.reason || `Limite diário de ${limitCheck.limit} análises atingido. Faça upgrade para continuar.`
+            },
+            usage: {
+              current: limitCheck.currentUsage,
+              limit: limitCheck.limit,
+              remaining: 0
+            },
+            debugId 
+          },
+          { status: 429 }
+        )
+      }
+      
+      console.log(`[${debugId}] Usage check passed: ${limitCheck.currentUsage}/${limitCheck.limit}`)
     }
 
-    // 3. Parse request body
+    // 4. Parse request body
     let body: { content?: string; message?: string }
     try {
       body = await request.json()
@@ -123,10 +152,37 @@ export async function POST(request: NextRequest): Promise<NextResponse<ChatRespo
       }
 
       const data = await backendResponse.json()
+      const reply = data.response || data.reply || 'Resposta recebida'
+      
+      // 6. Increment usage ONLY on successful analysis
+      // Check if response contains actual analysis (not error messages)
+      const isSuccessfulAnalysis = reply && 
+        !reply.includes('⚠️') && 
+        !reply.includes('Não consegui') &&
+        !reply.includes('não encontr') &&
+        !reply.includes('Erro') &&
+        reply.length > 100 // Real analyses are longer
+      
+      if (isSuccessfulAnalysis) {
+        await incrementChatUsage(supabase, user.id, userPlan)
+        console.log(`[${debugId}] Usage incremented for successful analysis`)
+      } else {
+        console.log(`[${debugId}] Usage NOT incremented - response appears to be an error or short`)
+      }
+      
+      // Get updated usage for response
+      const updatedUsage = isElite 
+        ? { current: 0, limit: 'unlimited' as const, remaining: 'unlimited' as const }
+        : await checkChatLimit(supabase, user.id, userPlan).then(r => ({
+            current: r.currentUsage,
+            limit: r.limit,
+            remaining: r.remaining
+          }))
       
       return NextResponse.json({
         ok: true,
-        reply: data.response || data.reply || 'Resposta recebida',
+        reply,
+        usage: updatedUsage,
         debugId
       })
 
