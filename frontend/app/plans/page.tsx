@@ -2,9 +2,7 @@
 
 import { Suspense, useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import Link from 'next/link'
 import { 
-  ArrowLeft,
   Check,
   Zap,
   Crown,
@@ -13,6 +11,7 @@ import {
   X
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import AppShell from '@/components/AppShell'
 
 const plans = [
   {
@@ -154,34 +153,17 @@ function PlansContent() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-dark-bg">
-        <div className="flex flex-col items-center gap-4">
-          <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
-          <p className="text-gray-400">Carregando planos...</p>
+      <AppShell title="Planos">
+        <div className="flex items-center justify-center h-full">
+          <Loader2 className="w-8 h-8 text-caramelo animate-spin" />
         </div>
-      </div>
+      </AppShell>
     )
   }
 
   return (
-    <div className="min-h-screen bg-dark-bg text-white">
-      {/* Header */}
-      <header className="bg-dark-surface border-b border-dark-border p-4">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center space-x-4">
-            <Link href="/" className="text-gray-400 hover:text-white">
-              <ArrowLeft size={20} />
-            </Link>
-            <h1 className="text-xl font-semibold">Planos</h1>
-          </div>
-          {user?.subscription && (
-            <span className="badge badge-success capitalize">{user.subscription.plan}</span>
-          )}
-        </div>
-      </header>
-
-      {/* Content */}
-      <main className="max-w-7xl mx-auto p-6">
+    <AppShell title="Planos">
+      <div className="max-w-7xl mx-auto p-4 sm:p-6">
         {/* Hero Section */}
         <div className="text-center mb-12">
           <h2 className="text-4xl font-bold mb-4 bg-gradient-to-r from-blue-400 to-green-400 bg-clip-text text-transparent">
@@ -323,7 +305,7 @@ function PlansContent() {
             Dúvidas? Entre em contato: <span className="text-caramelo">suporte@betfaro.com</span>
           </p>
         </div>
-      </main>
+      </div>
 
       {/* Success Modal */}
       {showSuccessModal && (
@@ -369,7 +351,7 @@ function PlansContent() {
           </div>
         </div>
       )}
-    </div>
+    </AppShell>
   )
 }
 

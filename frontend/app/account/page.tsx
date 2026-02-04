@@ -4,7 +4,6 @@ import { useEffect, useState, useCallback, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { 
-  ArrowLeft,
   User,
   Mail,
   Calendar,
@@ -15,6 +14,7 @@ import {
   Loader2
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import AppShell from '@/components/AppShell'
 
 function AccountContent() {
   const router = useRouter()
@@ -129,31 +129,17 @@ function AccountContent() {
 
   if (!user) {
     return (
-      <div className="min-h-screen bg-dark-bg flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
-      </div>
+      <AppShell title="Minha Conta">
+        <div className="flex items-center justify-center h-full">
+          <Loader2 className="animate-spin text-caramelo" size={32} />
+        </div>
+      </AppShell>
     )
   }
 
   return (
-    <div className="min-h-screen bg-dark-bg text-white">
-      {/* Header */}
-      <header className="bg-dark-surface border-b border-dark-border p-4">
-        <div className="max-w-3xl mx-auto flex items-center justify-between">
-          <div className="flex items-center space-x-4">
-            <Link href="/" className="text-gray-400 hover:text-white">
-              <ArrowLeft size={20} />
-            </Link>
-            <h1 className="text-xl font-semibold">Minha Conta</h1>
-          </div>
-          {user?.subscription && (
-            <span className="badge badge-success">{user.subscription.plan}</span>
-          )}
-        </div>
-      </header>
-
-      {/* Content */}
-      <main className="max-w-3xl mx-auto p-6">
+    <AppShell title="Minha Conta">
+      <div className="max-w-3xl mx-auto p-4 sm:p-6">
         {/* Success Banner after checkout */}
         {showSuccess && (
           <div className="bg-green-500/10 border border-green-500/30 rounded-xl p-4 mb-6 flex items-center">
@@ -266,8 +252,8 @@ function AccountContent() {
             Sair da Conta
           </button>
         </div>
-      </main>
-    </div>
+      </div>
+    </AppShell>
   )
 }
 

@@ -1,27 +1,25 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { 
   BarChart3, 
   TrendingUp, 
   Target, 
   Flame,
-  ArrowLeft,
   Plus,
   X,
   Check,
   AlertCircle,
   Diamond,
   Edit3,
-  RefreshCw,
   Loader2,
   MessageCircle,
   Zap
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import AddBetModal from '@/components/AddBetModal'
+import AppShell from '@/components/AppShell'
 import { getMarketLabel } from '@/lib/markets'
 
 interface Bet {
@@ -52,16 +50,13 @@ interface Stats {
 
 
 export default function DashboardPage() {
-  const router = useRouter()
   const supabase = createClient()
-  const [user, setUser] = useState<any>(null)
+  const [userId, setUserId] = useState<string | null>(null)
   const [bets, setBets] = useState<Bet[]>([])
   const [stats, setStats] = useState<Stats>({ total: 0, pending: 0, won: 0, lost: 0, winrate: 0, streak: 0, valueBets: 0 })
   const [loading, setLoading] = useState(true)
-  const [refreshing, setRefreshing] = useState(false)
   const [showAddModal, setShowAddModal] = useState(false)
   const [showResultModal, setShowResultModal] = useState<string | null>(null)
-  const [updatingBet, setUpdatingBet] = useState<string | null>(null)
 
   const fetchBets = useCallback(async () => {
     try {
@@ -75,44 +70,23 @@ export default function DashboardPage() {
       console.error('Error fetching bets:', error)
     } finally {
       setLoading(false)
-      setRefreshing(false)
     }
   }, [])
 
   useEffect(() => {
-    const checkAuth = async () => {
+    const init = async () => {
       const { data: { user: authUser } } = await supabase.auth.getUser()
-      
-      if (!authUser) {
-        router.push('/auth/login')
-        return
+      if (authUser) {
+        setUserId(authUser.id)
+        fetchBets()
       }
-
-      const { data: subscription } = await supabase
-        .from('subscriptions')
-        .select('*')
-        .eq('user_id', authUser.id)
-        .maybeSingle()
-
-      setUser({
-        id: authUser.id,
-        email: authUser.email,
-        subscription: subscription ? {
-          plan: subscription.plan,
-          expires_at: subscription.current_period_end,
-          status: subscription.status
-        } : undefined
-      })
-
-      fetchBets()
     }
-
-    checkAuth()
-  }, [router, supabase, fetchBets])
+    init()
+  }, [supabase, fetchBets])
 
   // Supabase Realtime subscription for bets
   useEffect(() => {
-    if (!user?.id) return
+    if (!userId) return
 
     const channel = supabase
       .channel('bets-changes')
@@ -120,7 +94,7 @@ export default function DashboardPage() {
         event: '*',
         schema: 'public',
         table: 'bets',
-        filter: `user_id=eq.${user.id}`
+        filter: `user_id=eq.${userId}`
       }, () => {
         fetchBets()
       })
@@ -129,15 +103,9 @@ export default function DashboardPage() {
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [user?.id, supabase, fetchBets])
-
-  const handleRefresh = () => {
-    setRefreshing(true)
-    fetchBets()
-  }
+  }, [userId, supabase, fetchBets])
 
   const handleUpdateResult = async (betId: string, result: 'won' | 'lost' | 'void') => {
-    setUpdatingBet(betId)
     try {
       const { error } = await supabase
         .from('bets')
@@ -150,7 +118,6 @@ export default function DashboardPage() {
     } catch (error) {
       console.error('Error updating bet:', error)
     } finally {
-      setUpdatingBet(null)
       setShowResultModal(null)
     }
   }
@@ -178,43 +145,29 @@ export default function DashboardPage() {
     }
   }
 
+  const headerContent = (
+    <button
+      onClick={() => setShowAddModal(true)}
+      className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 rounded-lg font-medium transition-colors text-sm"
+    >
+      <Plus size={16} />
+      <span className="hidden sm:inline">Adicionar Aposta</span>
+    </button>
+  )
   
   if (loading) {
     return (
-      <div className="min-h-screen bg-dark-bg flex items-center justify-center">
-        <Loader2 className="animate-spin text-blue-500" size={32} />
-      </div>
+      <AppShell title="Dashboard">
+        <div className="flex items-center justify-center h-full">
+          <Loader2 className="animate-spin text-caramelo" size={32} />
+        </div>
+      </AppShell>
     )
   }
 
   return (
-    <div className="min-h-screen bg-dark-bg text-white">
-      {/* Header */}
-      <header className="bg-dark-surface border-b border-dark-border p-4">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center space-x-4">
-            <Link href="/" className="text-gray-400 hover:text-white">
-              <ArrowLeft size={20} />
-            </Link>
-            <h1 className="text-xl font-semibold">Dashboard</h1>
-          </div>
-          <div className="flex items-center space-x-3">
-            <button
-              onClick={() => setShowAddModal(true)}
-              className="flex items-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg font-medium transition-colors"
-            >
-              <Plus size={18} />
-              <span>Adicionar Aposta</span>
-            </button>
-            {user?.subscription && (
-              <span className="badge badge-success">{user.subscription.plan}</span>
-            )}
-          </div>
-        </div>
-      </header>
-
-      {/* Content */}
-      <main className="max-w-7xl mx-auto p-6">
+    <AppShell title="Dashboard" headerContent={headerContent}>
+      <div className="max-w-7xl mx-auto p-4 sm:p-6">
         {/* Stats Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
           <div className="bg-dark-surface border border-dark-border rounded-xl p-6">
@@ -318,9 +271,9 @@ export default function DashboardPage() {
             </div>
           )}
         </div>
-      </main>
+      </div>
 
-      {/* Add Bet Modal - using reusable component */}
+      {/* Add Bet Modal */}
       <AddBetModal
         isOpen={showAddModal}
         onClose={() => setShowAddModal(false)}
@@ -376,6 +329,6 @@ export default function DashboardPage() {
           </div>
         </div>
       )}
-    </div>
+    </AppShell>
   )
 }
