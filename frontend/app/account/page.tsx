@@ -67,27 +67,58 @@ function AccountContent() {
       setIsPolling(true)
       setShowSuccess(true)
       
-      // First, trigger a refresh sync with Stripe
-      fetch('/api/billing/refresh', { method: 'POST' }).catch(() => {})
-      
       let attempts = 0
-      const maxAttempts = 15 // 30 seconds total
+      const maxAttempts = 20 // 40 seconds total
+      
+      const syncAndCheck = async () => {
+        attempts++
+        console.log(`[SYNC] Attempt ${attempts}/${maxAttempts} - syncing with Stripe...`)
+        
+        try {
+          // Call refresh to sync with Stripe
+          const refreshResponse = await fetch('/api/billing/refresh', { 
+            method: 'POST',
+            cache: 'no-store',
+          })
+          const refreshData = await refreshResponse.json()
+          console.log(`[SYNC] Refresh response:`, refreshData)
+          
+          // If refresh succeeded and plan matches, we're done
+          if (refreshData.success && refreshData.plan === expectedPlan) {
+            console.log(`[SYNC] Plan updated to ${expectedPlan}!`)
+            await fetchUserData() // Refresh UI
+            setIsPolling(false)
+            router.replace('/account')
+            return true
+          }
+        } catch (error) {
+          console.error('[SYNC] Error:', error)
+        }
+        
+        // Also check database directly
+        const userData = await fetchUserData()
+        if (userData?.subscription?.plan === expectedPlan) {
+          console.log(`[SYNC] Plan found in database: ${expectedPlan}`)
+          setIsPolling(false)
+          router.replace('/account')
+          return true
+        }
+        
+        return false
+      }
+      
+      // Initial sync
+      syncAndCheck()
       
       const pollInterval = setInterval(async () => {
-        attempts++
-        const userData = await fetchUserData()
-        
-        // Check if plan was updated
-        if (userData?.subscription?.plan === expectedPlan) {
+        const done = await syncAndCheck()
+        if (done || attempts >= maxAttempts) {
           clearInterval(pollInterval)
-          setIsPolling(false)
-          // Clean URL
-          router.replace('/account')
-        } else if (attempts >= maxAttempts) {
-          clearInterval(pollInterval)
-          setIsPolling(false)
-          // Still clean URL even if polling timed out
-          router.replace('/account')
+          if (attempts >= maxAttempts) {
+            console.log('[SYNC] Max attempts reached, stopping polling')
+            setIsPolling(false)
+            router.replace('/account')
+          }
         }
       }, 2000)
       
