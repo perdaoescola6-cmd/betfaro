@@ -12,20 +12,45 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Deploy to Vercel
-        uses: amondnet/vercel-action@v25
-        id: vercel
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          vercel-token: ${{ secrets.VERCEL_TOKEN }}
-          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
-          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
-          working-directory: ./frontend
-          vercel-args: '--prod'
+          node-version: '20'
 
-      - name: Output deployment URL
+      - name: Install Vercel CLI
+        run: npm install -g vercel@latest
+
+      - name: Link and Deploy to Vercel
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
         run: |
+          cd frontend
+          
+          # Create .vercel directory with project config
+          mkdir -p .vercel
+          echo "{\"orgId\":\"$VERCEL_ORG_ID\",\"projectId\":\"$VERCEL_PROJECT_ID\"}" > .vercel/project.json
+          echo "Project config:"
+          cat .vercel/project.json
+          
+          # Deploy using token
+          echo "Deploying to Vercel..."
+          vercel deploy --prod --yes --token=$VERCEL_TOKEN 2>&1 | tee deploy.log || true
+          
+          # Show full log for debugging
+          echo "=== Full deploy log ==="
+          cat deploy.log
+          
+          # Extract URL from output
+          URL=$(grep -oE 'https://[^ ]+\.vercel\.app' deploy.log | head -1 || echo "")
+          if [ -z "$URL" ]; then
+            URL=$(grep -oE 'https://betfaro[^ ]+' deploy.log | head -1 || echo "URL not found")
+          fi
+          echo "Deployed to: $URL"
+          
           echo "### 🚀 Deployed to Vercel" >> $GITHUB_STEP_SUMMARY
-          echo "**URL:** ${{ steps.vercel.outputs.preview-url }}" >> $GITHUB_STEP_SUMMARY
+          echo "**URL:** $URL" >> $GITHUB_STEP_SUMMARY
           echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
 
       - name: Wait for propagation
