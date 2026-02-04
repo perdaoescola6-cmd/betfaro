@@ -12,5 +12,5 @@ COPY . .
 # Railway injects PORT at runtime (default 8000 for local dev)
 ENV PORT=8000
 
-# Run the application - main.py reads PORT from environment
-CMD ["python", "main.py"]
+# Run the application - run.py reads PORT from environment
+CMD ["python", "run.py"]
