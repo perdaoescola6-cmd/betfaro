@@ -9,11 +9,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
-# Make start script executable
-RUN chmod +x start.sh
-
-# Railway injects PORT at runtime
+# Railway injects PORT at runtime (default 8000 for local dev)
 ENV PORT=8000
 
-# Run via bash script
-ENTRYPOINT ["./start.sh"]
+# Run the application - main.py reads PORT from environment
+CMD ["python", "main.py"]
