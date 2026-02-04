@@ -21,9 +21,11 @@ import {
   Crown,
   ChevronRight,
   AlertCircle,
-  Loader2
+  Loader2,
+  Check
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import AddBetModal from '@/components/AddBetModal'
 
 interface Pick {
   market: string
@@ -77,6 +79,18 @@ export default function PicksPage() {
   const [picks, setPicks] = useState<PickResult[]>([])
   const [meta, setMeta] = useState<PicksResponse['meta'] | null>(null)
   const [activeTab, setActiveTab] = useState<'both' | 'today' | 'tomorrow'>('both')
+  
+  // Bet tracking state
+  const [addedPicks, setAddedPicks] = useState<Set<number>>(new Set())
+  const [skippedPicks, setSkippedPicks] = useState<Set<number>>(new Set())
+  const [modalOpen, setModalOpen] = useState(false)
+  const [selectedPick, setSelectedPick] = useState<{
+    pick: PickResult
+    market: string
+    confidence: number
+    valueFlag: boolean
+  } | null>(null)
+  const [skippingId, setSkippingId] = useState<number | null>(null)
 
   useEffect(() => {
     checkAuth()
@@ -170,6 +184,46 @@ export default function PicksPage() {
     setUser(null)
     setIsAuthenticated(false)
     window.location.href = '/'
+  }
+
+  const handleEnterPick = (pick: PickResult, market: string, confidence: number) => {
+    const valueFlag = confidence >= 70
+    setSelectedPick({ pick, market, confidence, valueFlag })
+    setModalOpen(true)
+  }
+
+  const handleSkipPick = async (pick: PickResult) => {
+    setSkippingId(pick.fixture_id)
+    try {
+      const response = await fetch('/api/bets/skip', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          source: 'daily_picks',
+          homeTeam: pick.home_team,
+          awayTeam: pick.away_team,
+          fixtureId: pick.fixture_id.toString(),
+          suggestedMarket: pick.picks[0]?.market,
+          metadata: { picks: pick.picks, league: pick.league }
+        })
+      })
+
+      if (response.ok) {
+        setSkippedPicks(prev => new Set(Array.from(prev).concat(pick.fixture_id)))
+      }
+    } catch (error) {
+      console.error('Error skipping pick:', error)
+    } finally {
+      setSkippingId(null)
+    }
+  }
+
+  const handleBetSuccess = () => {
+    if (selectedPick) {
+      setAddedPicks(prev => new Set(Array.from(prev).concat(selectedPick.pick.fixture_id)))
+    }
+    setModalOpen(false)
+    setSelectedPick(null)
   }
 
   const getConfidenceColor = (level: string) => {
@@ -445,11 +499,46 @@ export default function PicksPage() {
                   ))}
                 </div>
 
-                {/* Footer */}
+                {/* Footer with action buttons */}
                 <div className="mt-3 pt-3 border-t border-dark-border">
-                  <p className="text-xs text-gray-600">
+                  <p className="text-xs text-gray-600 mb-3">
                     Baseado em {pick.games_analyzed} jogos analisados
                   </p>
+                  
+                  {/* Action buttons or status */}
+                  {addedPicks.has(pick.fixture_id) ? (
+                    <div className="flex items-center gap-2 text-green-400 text-sm">
+                      <Check size={16} />
+                      <span>Adicionada ao Dashboard ✅</span>
+                    </div>
+                  ) : skippedPicks.has(pick.fixture_id) ? (
+                    <div className="flex items-center gap-2 text-gray-400 text-sm">
+                      <X size={16} />
+                      <span>Pulado 👍</span>
+                    </div>
+                  ) : (
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleEnterPick(pick, pick.picks[0]?.market || '', pick.picks[0]?.confidence || 0)}
+                        className="flex-1 flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium py-2 px-3 rounded-lg transition-colors"
+                      >
+                        <Check size={14} />
+                        Entrar
+                      </button>
+                      <button
+                        onClick={() => handleSkipPick(pick)}
+                        disabled={skippingId === pick.fixture_id}
+                        className="flex-1 flex items-center justify-center gap-2 bg-red-600/20 hover:bg-red-600/30 text-red-400 text-sm font-medium py-2 px-3 rounded-lg transition-colors disabled:opacity-50"
+                      >
+                        {skippingId === pick.fixture_id ? (
+                          <Loader2 className="animate-spin" size={14} />
+                        ) : (
+                          <X size={14} />
+                        )}
+                        Pular
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
@@ -466,6 +555,33 @@ export default function PicksPage() {
           )}
         </div>
       </div>
+
+      {/* Add Bet Modal */}
+      {selectedPick && (
+        <AddBetModal
+          isOpen={modalOpen}
+          onClose={() => {
+            setModalOpen(false)
+            setSelectedPick(null)
+          }}
+          onSuccess={handleBetSuccess}
+          prefill={{
+            homeTeam: selectedPick.pick.home_team,
+            awayTeam: selectedPick.pick.away_team,
+            source: 'daily_picks',
+            fixtureId: selectedPick.pick.fixture_id.toString(),
+            league: selectedPick.pick.league,
+            kickoffAt: selectedPick.pick.date_iso,
+            suggestedMarket: selectedPick.market,
+            valueFlag: selectedPick.valueFlag,
+            botReco: {
+              market: selectedPick.market,
+              prob: selectedPick.confidence,
+              confidence: selectedPick.confidence >= 70 ? 'ALTA' : selectedPick.confidence >= 50 ? 'MÉDIA' : 'BAIXA'
+            }
+          }}
+        />
+      )}
     </div>
   )
 }

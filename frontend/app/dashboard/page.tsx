@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { 
@@ -14,55 +14,90 @@ import {
   Check,
   AlertCircle,
   Diamond,
-  Edit3
+  Edit3,
+  RefreshCw,
+  Loader2,
+  MessageCircle,
+  Zap
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import AddBetModal from '@/components/AddBetModal'
 
 interface Bet {
   id: string
-  match: {
-    homeTeam: string
-    awayTeam: string
-  }
+  home_team: string
+  away_team: string
   market: string
-  selection: string
   odds: number
   stake?: number
   note?: string
-  status: 'pending' | 'won' | 'lost' | 'void' | 'manual'
-  valueBet: boolean
-  createdAt: string
+  status: 'pending' | 'won' | 'lost' | 'void' | 'cashout'
+  value_flag: boolean
+  source: 'chat' | 'daily_picks' | 'manual'
+  league?: string
+  created_at: string
+  bot_reco?: any
 }
 
-const MARKETS = [
-  { value: 'over_2_5', label: 'Over 2.5 Gols' },
-  { value: 'under_2_5', label: 'Under 2.5 Gols' },
-  { value: 'over_1_5', label: 'Over 1.5 Gols' },
-  { value: 'btts_yes', label: 'Ambos Marcam - Sim' },
-  { value: 'btts_no', label: 'Ambos Marcam - Não' },
-  { value: '1x2_home', label: '1X2 - Vitória Casa' },
-  { value: '1x2_draw', label: '1X2 - Empate' },
-  { value: '1x2_away', label: '1X2 - Vitória Fora' },
-]
+interface Stats {
+  total: number
+  pending: number
+  won: number
+  lost: number
+  winrate: number
+  streak: number
+  valueBets: number
+}
+
+const MARKET_LABELS: Record<string, string> = {
+  'over_0_5': 'Over 0.5',
+  'over_1_5': 'Over 1.5',
+  'over_2_5': 'Over 2.5',
+  'over_3_5': 'Over 3.5',
+  'under_0_5': 'Under 0.5',
+  'under_1_5': 'Under 1.5',
+  'under_2_5': 'Under 2.5',
+  'under_3_5': 'Under 3.5',
+  'btts_yes': 'BTTS Sim',
+  'btts_no': 'BTTS Não',
+  '1x2_home': 'Vitória Casa',
+  '1x2_draw': 'Empate',
+  '1x2_away': 'Vitória Fora',
+  'dc_1x': 'Dupla Chance 1X',
+  'dc_x2': 'Dupla Chance X2',
+  'dc_12': 'Dupla Chance 12',
+}
 
 export default function DashboardPage() {
   const router = useRouter()
+  const supabase = createClient()
   const [user, setUser] = useState<any>(null)
   const [bets, setBets] = useState<Bet[]>([])
+  const [stats, setStats] = useState<Stats>({ total: 0, pending: 0, won: 0, lost: 0, winrate: 0, streak: 0, valueBets: 0 })
+  const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
   const [showAddModal, setShowAddModal] = useState(false)
   const [showResultModal, setShowResultModal] = useState<string | null>(null)
-  
-  // Form state
-  const [homeTeam, setHomeTeam] = useState('')
-  const [awayTeam, setAwayTeam] = useState('')
-  const [market, setMarket] = useState('')
-  const [odds, setOdds] = useState('')
-  const [stake, setStake] = useState('')
-  const [note, setNote] = useState('')
+  const [updatingBet, setUpdatingBet] = useState<string | null>(null)
+
+  const fetchBets = useCallback(async () => {
+    try {
+      const response = await fetch('/api/bets', { cache: 'no-store' })
+      if (response.ok) {
+        const data = await response.json()
+        setBets(data.bets || [])
+        setStats(data.stats || { total: 0, pending: 0, won: 0, lost: 0, winrate: 0, streak: 0, valueBets: 0 })
+      }
+    } catch (error) {
+      console.error('Error fetching bets:', error)
+    } finally {
+      setLoading(false)
+      setRefreshing(false)
+    }
+  }, [])
 
   useEffect(() => {
     const checkAuth = async () => {
-      const supabase = createClient()
       const { data: { user: authUser } } = await supabase.auth.getUser()
       
       if (!authUser) {
@@ -70,7 +105,6 @@ export default function DashboardPage() {
         return
       }
 
-      // Fetch subscription data
       const { data: subscription } = await supabase
         .from('subscriptions')
         .select('*')
@@ -86,92 +120,61 @@ export default function DashboardPage() {
           status: subscription.status
         } : undefined
       })
+
+      fetchBets()
     }
 
     checkAuth()
-    
-    // Load bets from localStorage
-    const savedBets = localStorage.getItem('betfaro_bets')
-    if (savedBets) {
-      setBets(JSON.parse(savedBets))
-    }
-  }, [router])
+  }, [router, supabase, fetchBets])
 
-  // Save bets to localStorage whenever they change
+  // Supabase Realtime subscription for bets
   useEffect(() => {
-    if (bets.length > 0) {
-      localStorage.setItem('betfaro_bets', JSON.stringify(bets))
-    }
-  }, [bets])
+    if (!user?.id) return
 
-  // Calculate dynamic stats
-  const stats = {
-    total: bets.length,
-    won: bets.filter(b => b.status === 'won').length,
-    lost: bets.filter(b => b.status === 'lost').length,
-    pending: bets.filter(b => b.status === 'pending').length,
-    valueBets: bets.filter(b => b.valueBet).length,
-    winRate: bets.filter(b => b.status === 'won' || b.status === 'lost').length > 0
-      ? Math.round((bets.filter(b => b.status === 'won').length / bets.filter(b => b.status === 'won' || b.status === 'lost').length) * 100)
-      : 0,
-    streak: calculateStreak(bets)
+    const channel = supabase
+      .channel('bets-changes')
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'bets',
+        filter: `user_id=eq.${user.id}`
+      }, () => {
+        fetchBets()
+      })
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [user?.id, supabase, fetchBets])
+
+  const handleRefresh = () => {
+    setRefreshing(true)
+    fetchBets()
   }
 
-  function calculateStreak(bets: Bet[]): number {
-    const resolved = bets
-      .filter(b => b.status === 'won' || b.status === 'lost')
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-    
-    let streak = 0
-    for (const bet of resolved) {
-      if (bet.status === 'won') streak++
-      else break
+  const handleUpdateResult = async (betId: string, result: 'won' | 'lost' | 'void') => {
+    setUpdatingBet(betId)
+    try {
+      const { error } = await supabase
+        .from('bets')
+        .update({ status: result, updated_at: new Date().toISOString() })
+        .eq('id', betId)
+
+      if (!error) {
+        fetchBets()
+      }
+    } catch (error) {
+      console.error('Error updating bet:', error)
+    } finally {
+      setUpdatingBet(null)
+      setShowResultModal(null)
     }
-    return streak
   }
 
-  function isValueBet(odds: number, impliedProb: number = 0.5): boolean {
-    const fairOdds = 1 / impliedProb
-    const edge = (odds - fairOdds) / fairOdds
-    return edge >= 0.05 // 5% edge
-  }
-
-  const handleAddBet = () => {
-    if (!homeTeam || !awayTeam || !market || !odds) return
-
-    const oddsNum = parseFloat(odds)
-    const newBet: Bet = {
-      id: Date.now().toString(),
-      match: { homeTeam, awayTeam },
-      market,
-      selection: MARKETS.find(m => m.value === market)?.label || market,
-      odds: oddsNum,
-      stake: stake ? parseFloat(stake) : undefined,
-      note: note || undefined,
-      status: 'pending',
-      valueBet: isValueBet(oddsNum),
-      createdAt: new Date().toISOString()
-    }
-
-    setBets(prev => [newBet, ...prev])
-    
-    // Reset form
-    setHomeTeam('')
-    setAwayTeam('')
-    setMarket('')
-    setOdds('')
-    setStake('')
-    setNote('')
+  const handleBetAdded = () => {
     setShowAddModal(false)
-  }
-
-  const handleUpdateResult = (betId: string, result: 'won' | 'lost' | 'void') => {
-    setBets(prev => prev.map(bet => 
-      bet.id === betId 
-        ? { ...bet, status: result === 'won' || result === 'lost' || result === 'void' ? result : 'manual' }
-        : bet
-    ))
-    setShowResultModal(null)
+    fetchBets()
   }
 
   const getStatusBadge = (status: Bet['status']) => {
@@ -179,9 +182,27 @@ export default function DashboardPage() {
       case 'won': return <span className="px-2 py-1 text-xs rounded-full bg-green-500/20 text-green-400">Ganhou</span>
       case 'lost': return <span className="px-2 py-1 text-xs rounded-full bg-red-500/20 text-red-400">Perdeu</span>
       case 'void': return <span className="px-2 py-1 text-xs rounded-full bg-gray-500/20 text-gray-400">Anulada</span>
-      case 'manual': return <span className="px-2 py-1 text-xs rounded-full bg-purple-500/20 text-purple-400">Manual</span>
+      case 'cashout': return <span className="px-2 py-1 text-xs rounded-full bg-blue-500/20 text-blue-400">Cashout</span>
       default: return <span className="px-2 py-1 text-xs rounded-full bg-yellow-500/20 text-yellow-400">Pendente</span>
     }
+  }
+
+  const getSourceBadge = (source: Bet['source']) => {
+    switch (source) {
+      case 'chat': return <span className="flex items-center gap-1 px-2 py-0.5 text-xs rounded-full bg-blue-500/20 text-blue-400"><MessageCircle size={10} />Chat</span>
+      case 'daily_picks': return <span className="flex items-center gap-1 px-2 py-0.5 text-xs rounded-full bg-yellow-500/20 text-yellow-400"><Zap size={10} />Picks</span>
+      default: return <span className="px-2 py-0.5 text-xs rounded-full bg-gray-500/20 text-gray-400">Manual</span>
+    }
+  }
+
+  const getMarketLabel = (market: string) => MARKET_LABELS[market] || market
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-dark-bg flex items-center justify-center">
+        <Loader2 className="animate-spin text-blue-500" size={32} />
+      </div>
+    )
   }
 
   return (
@@ -228,7 +249,7 @@ export default function DashboardPage() {
               <TrendingUp className="text-green-400" size={24} />
               <span className="text-xs text-gray-500">{stats.won}W / {stats.lost}L</span>
             </div>
-            <p className="text-2xl font-bold">{stats.winRate}%</p>
+            <p className="text-2xl font-bold">{stats.winrate}%</p>
             <p className="text-sm text-gray-400">Taxa de acerto</p>
           </div>
 
@@ -263,8 +284,16 @@ export default function DashboardPage() {
               <Target className="mx-auto text-gray-500 mb-4" size={48} />
               <h3 className="text-lg font-semibold mb-2">Nenhuma aposta registrada</h3>
               <p className="text-gray-400 mb-6">
-                Clique em "Adicionar Aposta" para começar a rastrear suas apostas.
+                Use o Chat ou Picks Diários para adicionar apostas ao seu dashboard.
               </p>
+              <div className="flex gap-3 justify-center">
+                <Link href="/" className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg font-medium transition-colors">
+                  Ir para o Chat
+                </Link>
+                <Link href="/picks" className="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 rounded-lg font-medium transition-colors">
+                  Ver Picks
+                </Link>
+              </div>
             </div>
           ) : (
             <div className="divide-y divide-dark-border">
@@ -273,19 +302,20 @@ export default function DashboardPage() {
                   <div className="flex items-center justify-between">
                     <div className="flex-1">
                       <div className="flex items-center space-x-3 mb-1">
-                        <span className="font-medium">{bet.match.homeTeam} vs {bet.match.awayTeam}</span>
-                        {bet.valueBet && (
+                        <span className="font-medium">{bet.home_team} vs {bet.away_team}</span>
+                        {bet.value_flag && (
                           <span className="flex items-center space-x-1 px-2 py-0.5 text-xs rounded-full bg-yellow-500/20 text-yellow-400">
                             <Diamond size={12} />
                             <span>Value</span>
                           </span>
                         )}
+                        {getSourceBadge(bet.source)}
                       </div>
                       <div className="flex items-center space-x-4 text-sm text-gray-400">
-                        <span>{bet.selection}</span>
+                        <span>{getMarketLabel(bet.market)}</span>
                         <span>@{bet.odds.toFixed(2)}</span>
                         {bet.stake && <span>R${bet.stake}</span>}
-                        <span>{new Date(bet.createdAt).toLocaleDateString('pt-BR')}</span>
+                        <span>{new Date(bet.created_at).toLocaleDateString('pt-BR')}</span>
                       </div>
                     </div>
                     <div className="flex items-center space-x-3">
@@ -308,109 +338,17 @@ export default function DashboardPage() {
         </div>
       </main>
 
-      {/* Add Bet Modal */}
-      {showAddModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-dark-surface border border-dark-border rounded-2xl p-6 max-w-md w-full shadow-2xl">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-lg font-semibold">Adicionar Aposta</h3>
-              <button onClick={() => setShowAddModal(false)} className="text-gray-400 hover:text-white">
-                <X size={20} />
-              </button>
-            </div>
-            
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm text-gray-400 mb-1">Time Casa</label>
-                  <input
-                    type="text"
-                    value={homeTeam}
-                    onChange={(e) => setHomeTeam(e.target.value)}
-                    placeholder="Ex: Chelsea"
-                    className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg focus:border-blue-500 focus:outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm text-gray-400 mb-1">Time Fora</label>
-                  <input
-                    type="text"
-                    value={awayTeam}
-                    onChange={(e) => setAwayTeam(e.target.value)}
-                    placeholder="Ex: Arsenal"
-                    className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg focus:border-blue-500 focus:outline-none"
-                  />
-                </div>
-              </div>
-              
-              <div>
-                <label className="block text-sm text-gray-400 mb-1">Mercado</label>
-                <select
-                  value={market}
-                  onChange={(e) => setMarket(e.target.value)}
-                  className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg focus:border-blue-500 focus:outline-none"
-                >
-                  <option value="">Selecione...</option>
-                  {MARKETS.map(m => (
-                    <option key={m.value} value={m.value}>{m.label}</option>
-                  ))}
-                </select>
-              </div>
-              
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm text-gray-400 mb-1">Odd</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={odds}
-                    onChange={(e) => setOdds(e.target.value)}
-                    placeholder="1.85"
-                    className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg focus:border-blue-500 focus:outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm text-gray-400 mb-1">Stake (opcional)</label>
-                  <input
-                    type="number"
-                    value={stake}
-                    onChange={(e) => setStake(e.target.value)}
-                    placeholder="R$ 50"
-                    className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg focus:border-blue-500 focus:outline-none"
-                  />
-                </div>
-              </div>
-              
-              <div>
-                <label className="block text-sm text-gray-400 mb-1">Observação (opcional)</label>
-                <input
-                  type="text"
-                  value={note}
-                  onChange={(e) => setNote(e.target.value)}
-                  placeholder="Ex: Análise do BetFaro"
-                  className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg focus:border-blue-500 focus:outline-none"
-                />
-              </div>
-            </div>
-            
-            <div className="flex space-x-3 mt-6">
-              <button
-                onClick={() => setShowAddModal(false)}
-                className="flex-1 py-2.5 px-4 rounded-lg bg-dark-border hover:bg-gray-700 text-white font-medium transition-colors"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={handleAddBet}
-                disabled={!homeTeam || !awayTeam || !market || !odds}
-                className="flex-1 py-2.5 px-4 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium transition-colors"
-              >
-                Salvar Aposta
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Add Bet Modal - using reusable component */}
+      <AddBetModal
+        isOpen={showAddModal}
+        onClose={() => setShowAddModal(false)}
+        onSuccess={handleBetAdded}
+        prefill={{
+          homeTeam: '',
+          awayTeam: '',
+          source: 'manual'
+        }}
+      />
 
       {/* Result Modal */}
       {showResultModal && (

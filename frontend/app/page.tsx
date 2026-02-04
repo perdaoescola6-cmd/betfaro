@@ -4,12 +4,29 @@ import { useState, useEffect, useRef } from 'react'
 import { MessageCircle, BarChart3, CreditCard, User, LogOut, Send, Menu, X, Trash2, HelpCircle, Target } from 'lucide-react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
+import BetCTA from '@/components/BetCTA'
+
+interface MatchData {
+  homeTeam: string
+  awayTeam: string
+  league?: string
+  fixtureId?: string
+  kickoffAt?: string
+  suggestedMarket?: string
+  botReco?: {
+    market?: string
+    prob?: number
+    confidence?: string
+  }
+}
 
 interface Message {
   id: string
   role: 'user' | 'assistant'
   content: string
   timestamp: Date
+  matchData?: MatchData
+  isAnalysis?: boolean
 }
 
 interface UserData {
@@ -197,11 +214,35 @@ export default function Home() {
 
       if (response.ok) {
         const data = await response.json()
+        const content = data.reply || data.response || 'Resposta recebida'
+        
+        // Check if this is a match analysis (contains team names and stats)
+        const isAnalysis = content.includes('⚽') && content.includes('vs') && 
+                          (content.includes('Over') || content.includes('BTTS') || content.includes('Forma Recente'))
+        
+        // Try to extract match data from the response
+        let matchData: MatchData | undefined
+        if (isAnalysis) {
+          // Extract team names from "⚽ Team A vs Team B" pattern
+          const matchPattern = /⚽\s*([^v]+)\s*vs\s*([^\n]+)/i
+          const matchMatch = content.match(matchPattern)
+          if (matchMatch) {
+            matchData = {
+              homeTeam: matchMatch[1].trim(),
+              awayTeam: matchMatch[2].trim(),
+              league: data.league,
+              fixtureId: data.fixtureId,
+            }
+          }
+        }
+        
         const assistantMessage: Message = {
           id: data.debugId || Date.now().toString(),
           role: 'assistant',
-          content: data.reply || data.response || 'Resposta recebida',
-          timestamp: new Date()
+          content,
+          timestamp: new Date(),
+          matchData,
+          isAnalysis
         }
         setMessages(prev => [...prev, assistantMessage])
       } else {
@@ -558,6 +599,20 @@ export default function Home() {
                   <div className={`text-xs mt-2 ${message.role === 'user' ? 'text-blue-200' : 'text-gray-500'}`}>
                     {message.timestamp.toLocaleTimeString()}
                   </div>
+                  
+                  {/* BetCTA for analysis messages */}
+                  {message.role === 'assistant' && message.isAnalysis && message.matchData && (
+                    <BetCTA
+                      homeTeam={message.matchData.homeTeam}
+                      awayTeam={message.matchData.awayTeam}
+                      source="chat"
+                      fixtureId={message.matchData.fixtureId}
+                      league={message.matchData.league}
+                      kickoffAt={message.matchData.kickoffAt}
+                      suggestedMarket={message.matchData.suggestedMarket}
+                      botReco={message.matchData.botReco}
+                    />
+                  )}
                 </div>
               ))
             )}
