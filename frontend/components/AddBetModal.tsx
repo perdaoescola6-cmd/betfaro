@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { X, Check, Loader2 } from 'lucide-react'
 import { MARKETS_BY_CATEGORY } from '@/lib/markets'
 
@@ -16,8 +16,8 @@ interface AddBetModalProps {
   onClose: () => void
   onSuccess?: () => void
   prefill?: {
-    homeTeam: string
-    awayTeam: string
+    homeTeam?: string
+    awayTeam?: string
     source: 'chat' | 'daily_picks' | 'manual'
     fixtureId?: string
     league?: string
@@ -29,20 +29,40 @@ interface AddBetModalProps {
 }
 
 export default function AddBetModal({ isOpen, onClose, onSuccess, prefill }: AddBetModalProps) {
-  const [market, setMarket] = useState(prefill?.suggestedMarket || '')
+  const [homeTeam, setHomeTeam] = useState('')
+  const [awayTeam, setAwayTeam] = useState('')
+  const [market, setMarket] = useState('')
   const [odds, setOdds] = useState('')
   const [stake, setStake] = useState('')
   const [note, setNote] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
 
+  // Update form when prefill changes or modal opens
+  useEffect(() => {
+    if (isOpen && prefill) {
+      setHomeTeam(prefill.homeTeam || '')
+      setAwayTeam(prefill.awayTeam || '')
+      setMarket(prefill.suggestedMarket || '')
+    } else if (isOpen && !prefill) {
+      // Reset form for manual entry
+      setHomeTeam('')
+      setAwayTeam('')
+      setMarket('')
+      setOdds('')
+      setStake('')
+      setNote('')
+    }
+  }, [isOpen, prefill])
+
   if (!isOpen) return null
 
-  const isValid = market && odds && parseFloat(odds) >= 1.01
+  const hasTeams = homeTeam.trim() && awayTeam.trim()
+  const isValid = hasTeams && market && odds && parseFloat(odds) >= 1.01
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!isValid || !prefill) return
+    if (!isValid) return
 
     setIsLoading(true)
     setError('')
@@ -52,18 +72,18 @@ export default function AddBetModal({ isOpen, onClose, onSuccess, prefill }: Add
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          source: prefill.source,
-          homeTeam: prefill.homeTeam,
-          awayTeam: prefill.awayTeam,
-          fixtureId: prefill.fixtureId,
-          league: prefill.league,
+          source: prefill?.source || 'manual',
+          homeTeam: homeTeam.trim(),
+          awayTeam: awayTeam.trim(),
+          fixtureId: prefill?.fixtureId,
+          league: prefill?.league,
           market,
           odds: parseFloat(odds),
           stake: stake ? parseFloat(stake) : null,
           note: note || null,
-          botReco: prefill.botReco,
-          valueFlag: prefill.valueFlag || false,
-          kickoffAt: prefill.kickoffAt
+          botReco: prefill?.botReco,
+          valueFlag: prefill?.valueFlag || false,
+          kickoffAt: prefill?.kickoffAt
         })
       })
 
@@ -111,27 +131,50 @@ export default function AddBetModal({ isOpen, onClose, onSuccess, prefill }: Add
           </button>
         </div>
 
-        {/* Match Info */}
-        {prefill && (
-          <div className="bg-dark-bg rounded-lg p-4 mb-6">
-            <div className="text-center">
-              <span className="text-lg font-medium text-white">
-                {prefill.homeTeam} vs {prefill.awayTeam}
+        {/* League & Value Flag Header */}
+        {prefill?.league && (
+          <div className="flex items-center justify-between mb-4">
+            <span className="text-sm text-gray-400">{prefill.league}</span>
+            {prefill.valueFlag && (
+              <span className="px-2 py-0.5 bg-green-500/20 text-green-400 text-xs rounded">
+                VALUE BET
               </span>
-              {prefill.league && (
-                <p className="text-sm text-gray-400 mt-1">{prefill.league}</p>
-              )}
-              {prefill.valueFlag && (
-                <span className="inline-block mt-2 px-2 py-0.5 bg-green-500/20 text-green-400 text-xs rounded">
-                  VALUE BET
-                </span>
-              )}
-            </div>
+            )}
           </div>
         )}
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Team Inputs */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Time Casa <span className="text-red-400">*</span>
+              </label>
+              <input
+                type="text"
+                value={homeTeam}
+                onChange={(e) => setHomeTeam(e.target.value)}
+                placeholder="Ex: Flamengo"
+                className="w-full bg-dark-bg border border-dark-border rounded-lg px-3 py-2.5 text-white focus:outline-none focus:border-blue-500 text-sm"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Time Fora <span className="text-red-400">*</span>
+              </label>
+              <input
+                type="text"
+                value={awayTeam}
+                onChange={(e) => setAwayTeam(e.target.value)}
+                placeholder="Ex: Palmeiras"
+                className="w-full bg-dark-bg border border-dark-border rounded-lg px-3 py-2.5 text-white focus:outline-none focus:border-blue-500 text-sm"
+                required
+              />
+            </div>
+          </div>
+
           {/* Market (Required) */}
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-2">

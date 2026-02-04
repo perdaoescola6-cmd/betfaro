@@ -303,14 +303,15 @@ export default function Home() {
         const content = data.reply || data.response || 'Resposta recebida'
         
         // Check if this is a match analysis (contains team names and stats)
-        const isAnalysis = content.includes('⚽') && content.includes('vs') && 
-                          (content.includes('Over') || content.includes('BTTS') || content.includes('Forma Recente'))
+        const isAnalysis = content.includes('⚽') && content.includes(' vs ') && 
+                          (content.includes('Over') || content.includes('BTTS') || content.includes('Forma Recente') || content.includes('Apostas Recomendadas'))
         
         // Try to extract match data from the response
         let matchData: MatchData | undefined
         if (isAnalysis) {
           // Extract team names from "⚽ Team A vs Team B" pattern
-          const matchPattern = /⚽\s*([^v]+)\s*vs\s*([^\n]+)/i
+          // Use ' vs ' as delimiter (with spaces) to avoid issues with team names containing 'v'
+          const matchPattern = /⚽\s*(.+?)\s+vs\s+(.+?)(?:\n|$)/i
           const matchMatch = content.match(matchPattern)
           if (matchMatch) {
             matchData = {
@@ -319,6 +320,17 @@ export default function Home() {
               league: data.league,
               fixtureId: data.fixtureId,
             }
+          }
+        }
+        
+        // Fallback: If we detected analysis but couldn't extract teams, still show CTA with empty teams
+        // User can fill them manually
+        if (isAnalysis && !matchData) {
+          matchData = {
+            homeTeam: '',
+            awayTeam: '',
+            league: data.league,
+            fixtureId: data.fixtureId,
           }
         }
         

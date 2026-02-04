@@ -12,8 +12,8 @@ interface BotReco {
 }
 
 interface BetCTAProps {
-  homeTeam: string
-  awayTeam: string
+  homeTeam?: string
+  awayTeam?: string
   source: 'chat' | 'daily_picks'
   fixtureId?: string
   league?: string
@@ -25,8 +25,8 @@ interface BetCTAProps {
 }
 
 export default function BetCTA({
-  homeTeam,
-  awayTeam,
+  homeTeam = '',
+  awayTeam = '',
   source,
   fixtureId,
   league,
@@ -90,29 +90,42 @@ export default function BetCTA({
     )
   }
 
+  // Show match info if available
+  const hasMatchInfo = homeTeam || awayTeam
+
   return (
     <>
-      <div className="mt-4 p-4 bg-dark-surface/50 rounded-lg border border-dark-border">
+      <div className="mt-4 p-4 bg-gradient-to-r from-dark-surface/80 to-dark-surface/60 rounded-lg border border-dark-border/50 backdrop-blur-sm shadow-lg">
+        {/* Match info header */}
+        {hasMatchInfo && (
+          <div className="text-center mb-3 pb-3 border-b border-dark-border/30">
+            <span className="text-sm font-medium text-white truncate block">
+              {homeTeam || '???'} vs {awayTeam || '???'}
+            </span>
+            {league && <span className="text-xs text-gray-400">{league}</span>}
+          </div>
+        )}
+        
         <p className="text-sm text-gray-300 mb-3">📌 Você entrou nessa aposta?</p>
         <div className="flex gap-3">
           <button
             onClick={() => setShowModal(true)}
-            className="flex-1 flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium py-2.5 px-4 rounded-lg transition-colors"
+            className="flex-1 flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium py-2.5 px-4 rounded-lg transition-all hover:scale-[1.02] active:scale-[0.98]"
           >
             <Check size={16} />
-            Fiz a bet
+            <span className="truncate">Fiz a bet</span>
           </button>
           <button
             onClick={handleSkip}
             disabled={isSkipping}
-            className="flex-1 flex items-center justify-center gap-2 bg-red-600/20 hover:bg-red-600/30 text-red-400 text-sm font-medium py-2.5 px-4 rounded-lg transition-colors disabled:opacity-50"
+            className="flex-1 flex items-center justify-center gap-2 bg-red-600/20 hover:bg-red-600/30 text-red-400 text-sm font-medium py-2.5 px-4 rounded-lg transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50"
           >
             {isSkipping ? (
               <Loader2 className="animate-spin" size={16} />
             ) : (
               <X size={16} />
             )}
-            Não entrei
+            <span className="truncate">Não entrei</span>
           </button>
         </div>
       </div>
