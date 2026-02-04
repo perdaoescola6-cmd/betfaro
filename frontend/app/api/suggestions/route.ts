@@ -1,120 +1,127 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-// v2 - Direct API-Football integration with future games filter
+// v4 - Fetches from backend Python, filters future games, adds premium formatting
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
-// Liga IDs da API-Football com prioridade por tier
-const LEAGUE_PRIORITY: Record<number, { tier: number; name: string; shortName: string }> = {
-  // Tier 1 - Brasil + Champions + Libertadores
-  71: { tier: 1, name: "Brasileirão Série A", shortName: "Brasileirão" },
-  73: { tier: 1, name: "Copa do Brasil", shortName: "Copa BR" },
-  2: { tier: 1, name: "UEFA Champions League", shortName: "Champions" },
-  13: { tier: 1, name: "Copa Libertadores", shortName: "Libertadores" },
-  11: { tier: 1, name: "Copa Sul-Americana", shortName: "Sul-Americana" },
-  
-  // Tier 2 - Top 5 Europa
-  39: { tier: 2, name: "Premier League", shortName: "Premier" },
-  140: { tier: 2, name: "La Liga", shortName: "La Liga" },
-  135: { tier: 2, name: "Serie A", shortName: "Serie A" },
-  78: { tier: 2, name: "Bundesliga", shortName: "Bundesliga" },
-  61: { tier: 2, name: "Ligue 1", shortName: "Ligue 1" },
-  3: { tier: 2, name: "UEFA Europa League", shortName: "Europa League" },
-  
-  // Tier 3 - Série B + Outras ligas relevantes
-  72: { tier: 3, name: "Brasileirão Série B", shortName: "Série B" },
-  94: { tier: 3, name: "Primeira Liga", shortName: "Portugal" },
-  88: { tier: 3, name: "Eredivisie", shortName: "Holanda" },
-  128: { tier: 3, name: "Argentina Primera", shortName: "Argentina" },
-  262: { tier: 3, name: "Liga MX", shortName: "México" },
-  253: { tier: 3, name: "MLS", shortName: "MLS" },
-  
-  // Tier 4 - Estaduais BR
-  475: { tier: 4, name: "Campeonato Paulista", shortName: "Paulistão" },
-  476: { tier: 4, name: "Campeonato Carioca", shortName: "Carioca" },
-  477: { tier: 4, name: "Campeonato Mineiro", shortName: "Mineiro" },
-  478: { tier: 4, name: "Campeonato Gaúcho", shortName: "Gaúcho" },
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || process.env.BACKEND_URL || 'https://betfaro-production.up.railway.app'
+
+// League short names for display
+const LEAGUE_SHORT_NAMES: Record<string, string> = {
+  'Serie A': 'Brasileirão',
+  'Brasileirão Série A': 'Brasileirão',
+  'Copa do Brasil': 'Copa BR',
+  'UEFA Champions League': 'Champions',
+  'Champions League': 'Champions',
+  'CONCACAF Champions League': 'CONCACAF',
+  'Copa Libertadores': 'Libertadores',
+  'Premier League': 'Premier',
+  'La Liga': 'La Liga',
+  'Bundesliga': 'Bundesliga',
+  'Ligue 1': 'Ligue 1',
+  'Serie A Italy': 'Serie A',
+  'Liga Profesional Argentina': 'Argentina',
+  'Capixaba': 'Capixaba',
+  'Amazonense': 'Amazonense',
+  'Copa Costa Rica': 'Costa Rica',
+}
+
+// League tier priority (1 = highest priority)
+const LEAGUE_TIERS: Record<string, number> = {
+  'Serie A': 1,
+  'Brasileirão Série A': 1,
+  'Copa do Brasil': 1,
+  'Champions League': 1,
+  'UEFA Champions League': 1,
+  'Copa Libertadores': 1,
+  'Premier League': 2,
+  'La Liga': 2,
+  'Bundesliga': 2,
+  'Ligue 1': 2,
+  'Serie A Italy': 2,
+  'CONCACAF Champions League': 2,
+  'Liga Profesional Argentina': 3,
 }
 
 const FALLBACK_SUGGESTIONS = [
-  { label: "Flamengo x Palmeiras", query: "Flamengo x Palmeiras", league: "Brasileirão", tier: 1 },
-  { label: "Real Madrid x Barcelona", query: "Real Madrid x Barcelona", league: "La Liga", tier: 2 },
-  { label: "Arsenal x Chelsea", query: "Arsenal x Chelsea", league: "Premier", tier: 2 },
-  { label: "Bayern x Dortmund", query: "Bayern x Dortmund", league: "Bundesliga", tier: 2 },
-  { label: "Milan x Inter", query: "Milan x Inter", league: "Serie A", tier: 2 },
-  { label: "PSG x Marseille", query: "PSG x Marseille", league: "Ligue 1", tier: 2 },
+  { label: "Flamengo x Palmeiras", query: "Flamengo x Palmeiras", league: "Brasileirão", kickoffDisplay: "", tier: 1 },
+  { label: "Real Madrid x Barcelona", query: "Real Madrid x Barcelona", league: "La Liga", kickoffDisplay: "", tier: 2 },
+  { label: "Arsenal x Chelsea", query: "Arsenal x Chelsea", league: "Premier", kickoffDisplay: "", tier: 2 },
+  { label: "Bayern x Dortmund", query: "Bayern x Dortmund", league: "Bundesliga", kickoffDisplay: "", tier: 2 },
+  { label: "Milan x Inter", query: "Milan x Inter", league: "Serie A", kickoffDisplay: "", tier: 2 },
+  { label: "PSG x Marseille", query: "PSG x Marseille", league: "Ligue 1", kickoffDisplay: "", tier: 2 },
 ]
 
-interface Fixture {
-  fixture: {
-    id: number
-    date: string
-    timestamp: number
-    status: {
-      short: string
-    }
-  }
-  league: {
-    id: number
-    name: string
-  }
-  teams: {
-    home: { name: string }
-    away: { name: string }
-  }
+interface BackendSuggestion {
+  label: string
+  query: string
+  league?: string
+  time?: string
 }
 
 interface Suggestion {
   label: string
   query: string
   league: string
-  kickoffAt: string
+  kickoffAt?: string
   kickoffDisplay: string
   tier: number
 }
 
-function formatKickoffDisplay(date: Date, now: Date): string {
-  const isToday = date.toDateString() === now.toDateString()
-  const tomorrow = new Date(now)
-  tomorrow.setDate(tomorrow.getDate() + 1)
-  const isTomorrow = date.toDateString() === tomorrow.toDateString()
+function formatKickoffDisplay(dateStr: string | undefined): string {
+  if (!dateStr) return ''
   
-  const hours = date.getHours().toString().padStart(2, '0')
-  const minutes = date.getMinutes().toString().padStart(2, '0')
-  const time = `${hours}:${minutes}`
-  
-  if (isToday) return `Hoje • ${time}`
-  if (isTomorrow) return `Amanhã • ${time}`
-  
-  const dayNames = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
-  return `${dayNames[date.getDay()]} • ${time}`
+  try {
+    const date = new Date(dateStr)
+    const now = new Date()
+    
+    const isToday = date.toDateString() === now.toDateString()
+    const tomorrow = new Date(now)
+    tomorrow.setDate(tomorrow.getDate() + 1)
+    const isTomorrow = date.toDateString() === tomorrow.toDateString()
+    
+    const hours = date.getHours().toString().padStart(2, '0')
+    const minutes = date.getMinutes().toString().padStart(2, '0')
+    const time = `${hours}:${minutes}`
+    
+    if (isToday) return `Hoje • ${time}`
+    if (isTomorrow) return `Amanhã • ${time}`
+    
+    const dayNames = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
+    return `${dayNames[date.getDay()]} • ${time}`
+  } catch {
+    return ''
+  }
 }
 
-async function fetchFixturesFromAPI(dateStr: string): Promise<Fixture[]> {
-  const apiKey = process.env.FOOTBALL_API_KEY
-  if (!apiKey) {
-    console.error('[suggestions] FOOTBALL_API_KEY not configured')
-    return []
-  }
-
+function isFutureGame(dateStr: string | undefined): boolean {
+  if (!dateStr) return true // If no date, include it
+  
   try {
-    const leagueIds = Object.keys(LEAGUE_PRIORITY).join('-')
-    const url = `https://v3.football.api-sports.io/fixtures?date=${dateStr}&league=${leagueIds}`
-    
-    const response = await fetch(url, {
-      headers: { 'x-apisports-key': apiKey },
-      cache: 'no-store'
-    })
+    const kickoff = new Date(dateStr)
+    const now = new Date()
+    return kickoff > now
+  } catch {
+    return true
+  }
+}
 
+async function fetchFromBackend(day: string): Promise<BackendSuggestion[]> {
+  try {
+    const response = await fetch(`${BACKEND_URL}/api/suggestions?day=${day}`, {
+      headers: { 'Content-Type': 'application/json' },
+      cache: 'no-store',
+    })
+    
     if (!response.ok) {
-      console.error(`[suggestions] API-Football error: ${response.status}`)
+      console.error(`[suggestions] Backend error for ${day}: ${response.status}`)
       return []
     }
-
+    
     const data = await response.json()
-    return data.response || []
+    return data.suggestions || []
   } catch (error) {
-    console.error('[suggestions] Error fetching fixtures:', error)
+    console.error(`[suggestions] Error fetching ${day} from backend:`, error)
     return []
   }
 }
@@ -122,7 +129,6 @@ async function fetchFixturesFromAPI(dateStr: string): Promise<Fixture[]> {
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const limit = parseInt(searchParams.get('limit') || '10')
-  const days = parseInt(searchParams.get('days') || '2')
   
   const now = new Date()
   const generatedAt = now.toISOString()
@@ -130,69 +136,61 @@ export async function GET(request: NextRequest) {
   console.log(`[suggestions] Fetching suggestions at ${generatedAt}`)
   
   try {
-    const allFixtures: Fixture[] = []
+    // Fetch from backend for today and tomorrow
+    const [todaySuggestions, tomorrowSuggestions] = await Promise.all([
+      fetchFromBackend('today'),
+      fetchFromBackend('tomorrow')
+    ])
+    
+    const allBackendSuggestions = [...todaySuggestions, ...tomorrowSuggestions]
+    console.log(`[suggestions] Backend returned ${allBackendSuggestions.length} suggestions`)
+    
+    // Filter only FUTURE games
     let filteredPast = 0
-    let filteredStatus = 0
-    
-    // Buscar fixtures para D0, D+1 (e D+2 se necessário)
-    for (let d = 0; d < Math.min(days + 1, 3); d++) {
-      const date = new Date(now)
-      date.setDate(date.getDate() + d)
-      const dateStr = date.toISOString().split('T')[0]
-      
-      const fixtures = await fetchFixturesFromAPI(dateStr)
-      console.log(`[suggestions] Date ${dateStr}: ${fixtures.length} fixtures found`)
-      allFixtures.push(...fixtures)
-      
-      // Se já temos jogos suficientes, parar
-      if (allFixtures.length >= limit * 2) break
-    }
-    
-    // Filtrar apenas jogos FUTUROS com status NS (Not Started)
-    const futureFixtures = allFixtures.filter(f => {
-      const kickoff = new Date(f.fixture.date)
-      const status = f.fixture.status.short
-      
-      // Deve ser status NS (Not Started)
-      if (status !== 'NS') {
-        filteredStatus++
-        return false
-      }
-      
-      // Deve ser no futuro
-      if (kickoff <= now) {
+    const futureSuggestions = allBackendSuggestions.filter(s => {
+      if (!isFutureGame(s.time)) {
         filteredPast++
         return false
       }
-      
       return true
     })
     
-    console.log(`[suggestions] Filtered: ${filteredPast} past, ${filteredStatus} non-NS. Remaining: ${futureFixtures.length}`)
+    console.log(`[suggestions] Filtered ${filteredPast} past games, ${futureSuggestions.length} remaining`)
     
-    // Mapear para formato de sugestão com tier
-    const suggestions: Suggestion[] = futureFixtures.map(f => {
-      const leagueInfo = LEAGUE_PRIORITY[f.league.id] || { tier: 5, name: f.league.name, shortName: f.league.name }
-      const kickoffDate = new Date(f.fixture.date)
+    // Map to our format with tier and kickoffDisplay
+    const suggestions: Suggestion[] = futureSuggestions.map(s => {
+      const leagueName = s.league || 'Unknown'
+      const shortName = LEAGUE_SHORT_NAMES[leagueName] || leagueName.split(' ')[0]
+      const tier = LEAGUE_TIERS[leagueName] || 4
       
       return {
-        label: `${f.teams.home.name} x ${f.teams.away.name}`,
-        query: `${f.teams.home.name} x ${f.teams.away.name}`,
-        league: leagueInfo.shortName,
-        kickoffAt: f.fixture.date,
-        kickoffDisplay: formatKickoffDisplay(kickoffDate, now),
-        tier: leagueInfo.tier
+        label: s.label,
+        query: s.query,
+        league: shortName,
+        kickoffAt: s.time,
+        kickoffDisplay: formatKickoffDisplay(s.time),
+        tier
       }
     })
     
-    // Ordenar por: tier (menor primeiro), depois por kickoff (mais próximo primeiro)
+    // Sort by tier (lower first), then by kickoff (sooner first)
     suggestions.sort((a, b) => {
       if (a.tier !== b.tier) return a.tier - b.tier
-      return new Date(a.kickoffAt).getTime() - new Date(b.kickoffAt).getTime()
+      if (a.kickoffAt && b.kickoffAt) {
+        return new Date(a.kickoffAt).getTime() - new Date(b.kickoffAt).getTime()
+      }
+      return 0
     })
     
-    // Limitar resultado
-    const result = suggestions.slice(0, limit)
+    // Remove duplicates by label
+    const seen = new Set<string>()
+    const uniqueSuggestions = suggestions.filter(s => {
+      if (seen.has(s.label)) return false
+      seen.add(s.label)
+      return true
+    })
+    
+    const result = uniqueSuggestions.slice(0, limit)
     
     console.log(`[suggestions] Returning ${result.length} suggestions`)
     
@@ -201,7 +199,7 @@ export async function GET(request: NextRequest) {
         generatedAt,
         items: FALLBACK_SUGGESTIONS,
         source: 'fallback',
-        stats: { total: allFixtures.length, filteredPast, filteredStatus, future: 0 }
+        stats: { total: allBackendSuggestions.length, filteredPast, future: 0 }
       }, {
         headers: { 'Cache-Control': 'no-store, max-age=0' }
       })
@@ -211,7 +209,7 @@ export async function GET(request: NextRequest) {
       generatedAt,
       items: result,
       source: 'api',
-      stats: { total: allFixtures.length, filteredPast, filteredStatus, future: futureFixtures.length }
+      stats: { total: allBackendSuggestions.length, filteredPast, future: futureSuggestions.length }
     }, {
       headers: { 'Cache-Control': 'no-store, max-age=0' }
     })

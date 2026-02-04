@@ -92,16 +92,83 @@ export default function Home() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, isLoading])
 
+  // Helper to format kickoff time
+  const formatKickoffDisplay = (dateStr: string | undefined): string => {
+    if (!dateStr) return ''
+    try {
+      const date = new Date(dateStr)
+      const now = new Date()
+      const isToday = date.toDateString() === now.toDateString()
+      const tomorrow = new Date(now)
+      tomorrow.setDate(tomorrow.getDate() + 1)
+      const isTomorrow = date.toDateString() === tomorrow.toDateString()
+      
+      const hours = date.getHours().toString().padStart(2, '0')
+      const minutes = date.getMinutes().toString().padStart(2, '0')
+      const time = `${hours}:${minutes}`
+      
+      if (isToday) return `Hoje • ${time}`
+      if (isTomorrow) return `Amanhã • ${time}`
+      return `${['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'][date.getDay()]} • ${time}`
+    } catch {
+      return ''
+    }
+  }
+
+  // Helper to check if game is in the future
+  const isFutureGame = (dateStr: string | undefined): boolean => {
+    if (!dateStr) return true
+    try {
+      return new Date(dateStr) > new Date()
+    } catch {
+      return true
+    }
+  }
+
+  // League short names
+  const getLeagueShortName = (league: string | undefined): string => {
+    if (!league) return ''
+    const shortNames: Record<string, string> = {
+      'Serie A': 'Brasileirão',
+      'Copa do Brasil': 'Copa BR',
+      'Champions League': 'Champions',
+      'Premier League': 'Premier',
+      'Liga Profesional Argentina': 'Argentina',
+    }
+    return shortNames[league] || league.split(' ')[0]
+  }
+
   // Load dynamic suggestions on mount and auto-refresh every 10 minutes
   useEffect(() => {
     const loadSuggestions = async () => {
       setSuggestionsLoading(true)
       try {
-        const response = await fetch('/api/suggestions?limit=8&days=2', { cache: 'no-store' })
+        const response = await fetch('/api/suggestions?day=today', { cache: 'no-store' })
         if (response.ok) {
           const data = await response.json()
-          if (data.items && data.items.length > 0) {
-            setSuggestions(data.items)
+          // Handle both old format (suggestions) and new format (items)
+          const rawSuggestions = data.items || data.suggestions || []
+          
+          if (rawSuggestions.length > 0) {
+            // Filter only future games and transform
+            const now = new Date()
+            const transformed = rawSuggestions
+              .filter((s: any) => isFutureGame(s.time || s.kickoffAt))
+              .map((s: any) => ({
+                label: s.label,
+                query: s.query,
+                league: s.league ? getLeagueShortName(s.league) : undefined,
+                kickoffAt: s.time || s.kickoffAt,
+                kickoffDisplay: s.kickoffDisplay || formatKickoffDisplay(s.time || s.kickoffAt),
+                tier: s.tier || 4
+              }))
+              .slice(0, 8)
+            
+            if (transformed.length > 0) {
+              setSuggestions(transformed)
+            } else {
+              setSuggestions(fallbackSuggestions)
+            }
           } else {
             setSuggestions(fallbackSuggestions)
           }
