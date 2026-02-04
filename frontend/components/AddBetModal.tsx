@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { X, Check, Loader2 } from 'lucide-react'
+import { MARKETS_BY_CATEGORY } from '@/lib/markets'
 
 interface BotReco {
   market?: string
@@ -26,32 +27,6 @@ interface AddBetModalProps {
     valueFlag?: boolean
   }
 }
-
-const MARKET_OPTIONS = [
-  { value: '', label: 'Selecione o mercado...' },
-  { value: 'over_0_5', label: 'Over 0.5 Gols' },
-  { value: 'over_1_5', label: 'Over 1.5 Gols' },
-  { value: 'over_2_5', label: 'Over 2.5 Gols' },
-  { value: 'over_3_5', label: 'Over 3.5 Gols' },
-  { value: 'under_0_5', label: 'Under 0.5 Gols' },
-  { value: 'under_1_5', label: 'Under 1.5 Gols' },
-  { value: 'under_2_5', label: 'Under 2.5 Gols' },
-  { value: 'under_3_5', label: 'Under 3.5 Gols' },
-  { value: 'btts_yes', label: 'BTTS Sim' },
-  { value: 'btts_no', label: 'BTTS Não' },
-  { value: '1x2_home', label: 'Vitória Casa (1)' },
-  { value: '1x2_draw', label: 'Empate (X)' },
-  { value: '1x2_away', label: 'Vitória Fora (2)' },
-  { value: 'dc_1x', label: 'Dupla Chance 1X' },
-  { value: 'dc_x2', label: 'Dupla Chance X2' },
-  { value: 'dc_12', label: 'Dupla Chance 12' },
-  { value: 'ht_over_0_5', label: 'HT Over 0.5' },
-  { value: 'ht_over_1_5', label: 'HT Over 1.5' },
-  { value: 'corners_over_8_5', label: 'Escanteios Over 8.5' },
-  { value: 'corners_over_9_5', label: 'Escanteios Over 9.5' },
-  { value: 'corners_over_10_5', label: 'Escanteios Over 10.5' },
-  { value: 'other', label: 'Outro mercado' },
-]
 
 export default function AddBetModal({ isOpen, onClose, onSuccess, prefill }: AddBetModalProps) {
   const [market, setMarket] = useState(prefill?.suggestedMarket || '')
@@ -168,8 +143,13 @@ export default function AddBetModal({ isOpen, onClose, onSuccess, prefill }: Add
               className="w-full bg-dark-bg border border-dark-border rounded-lg px-4 py-3 text-white focus:outline-none focus:border-blue-500"
               required
             >
-              {MARKET_OPTIONS.map(opt => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              <option value="">Selecione o mercado...</option>
+              {Object.entries(MARKETS_BY_CATEGORY).map(([category, markets]) => (
+                <optgroup key={category} label={category}>
+                  {markets.map(m => (
+                    <option key={m.key} value={m.key}>{m.label}</option>
+                  ))}
+                </optgroup>
               ))}
             </select>
           </div>

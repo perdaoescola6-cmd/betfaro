@@ -22,6 +22,7 @@ import {
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import AddBetModal from '@/components/AddBetModal'
+import { getMarketLabel } from '@/lib/markets'
 
 interface Bet {
   id: string
@@ -49,24 +50,6 @@ interface Stats {
   valueBets: number
 }
 
-const MARKET_LABELS: Record<string, string> = {
-  'over_0_5': 'Over 0.5',
-  'over_1_5': 'Over 1.5',
-  'over_2_5': 'Over 2.5',
-  'over_3_5': 'Over 3.5',
-  'under_0_5': 'Under 0.5',
-  'under_1_5': 'Under 1.5',
-  'under_2_5': 'Under 2.5',
-  'under_3_5': 'Under 3.5',
-  'btts_yes': 'BTTS Sim',
-  'btts_no': 'BTTS Não',
-  '1x2_home': 'Vitória Casa',
-  '1x2_draw': 'Empate',
-  '1x2_away': 'Vitória Fora',
-  'dc_1x': 'Dupla Chance 1X',
-  'dc_x2': 'Dupla Chance X2',
-  'dc_12': 'Dupla Chance 12',
-}
 
 export default function DashboardPage() {
   const router = useRouter()
@@ -195,8 +178,7 @@ export default function DashboardPage() {
     }
   }
 
-  const getMarketLabel = (market: string) => MARKET_LABELS[market] || market
-
+  
   if (loading) {
     return (
       <div className="min-h-screen bg-dark-bg flex items-center justify-center">
