@@ -39,7 +39,7 @@ Adicione **3 secrets**:
 |------|-------|
 | `VERCEL_TOKEN` | Token criado no passo 1 |
 | `VERCEL_ORG_ID` | Seu Org/Team ID |
-| `VERCEL_PROJECT_ID` | Project ID do betfaro |
+| `VERCEL_PROJECT_ID` | Project ID do betfaro (ex: `prj_A2sAqXIEXJZa5SKxbOQeMZQqHkx5`) |
 
 ### Passo 4: Pronto!
 
