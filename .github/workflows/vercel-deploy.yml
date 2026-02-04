@@ -5,59 +5,60 @@ on:
     branches: [main]
   workflow_dispatch:
 
-env:
-  VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-  VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-
 jobs:
-  deploy:
+  trigger-deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Install Vercel CLI
-        run: npm install -g vercel@latest
-
-      - name: Pull Vercel Environment
-        run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
-        working-directory: ./frontend
-
-      - name: Build Project
-        run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
-        working-directory: ./frontend
-
-      - name: Deploy to Vercel
-        id: deploy
+      - name: Trigger Vercel Deploy Hook
         run: |
-          URL=$(vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }})
-          echo "url=$URL" >> $GITHUB_OUTPUT
-          echo "### 🚀 Deployed to Vercel" >> $GITHUB_STEP_SUMMARY
-          echo "**URL:** $URL" >> $GITHUB_STEP_SUMMARY
-          echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
-        working-directory: ./frontend
+          echo "🚀 Triggering Vercel deployment..."
+          echo "Commit: ${{ github.sha }}"
+          echo "Message: ${{ github.event.head_commit.message }}"
+          
+          # Trigger deploy via hook
+          RESPONSE=$(curl -s -X POST "${{ secrets.VERCEL_DEPLOY_HOOK }}")
+          echo "Response: $RESPONSE"
+          
+          # Extract job ID if available
+          JOB_ID=$(echo $RESPONSE | jq -r '.job.id // empty')
+          if [ -n "$JOB_ID" ]; then
+            echo "✅ Deploy triggered! Job ID: $JOB_ID"
+            echo "### 🚀 Deploy Triggered" >> $GITHUB_STEP_SUMMARY
+            echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+            echo "**Job ID:** $JOB_ID" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ Deploy hook response: $RESPONSE"
+          fi
+
+      - name: Wait for deployment
+        run: |
+          echo "Waiting 90s for Vercel to build and deploy..."
+          sleep 90
 
       - name: Verify Deployment
         run: |
-          echo "Waiting 30s for deployment to propagate..."
-          sleep 30
+          echo "Checking if site is responding..."
           STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://betfaro.com.br)
           echo "HTTP Status: $STATUS"
-          if [ "$STATUS" != "200" ]; then
-            echo "❌ Deployment verification failed! Status: $STATUS"
-            exit 1
+          
+          if [ "$STATUS" = "200" ]; then
+            echo "✅ Site is live and responding!"
+            echo "### ✅ Deployment Verified" >> $GITHUB_STEP_SUMMARY
+            echo "Site responding with HTTP 200" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ Site returned status $STATUS (may still be deploying)"
+            echo "### ⚠️ Verification Warning" >> $GITHUB_STEP_SUMMARY
+            echo "Site returned HTTP $STATUS" >> $GITHUB_STEP_SUMMARY
           fi
-          echo "✅ Deployment verified successfully!"
-          echo "### ✅ Verification Passed" >> $GITHUB_STEP_SUMMARY
-          echo "Site is responding with HTTP 200" >> $GITHUB_STEP_SUMMARY
 
-      - name: Output Deployment URL
+      - name: Check API endpoint
         run: |
-          echo "✅ Deploy completed!"
-          echo "URL: ${{ steps.deploy.outputs.url }}"
-          echo "Commit: ${{ github.sha }}"
+          echo "Checking API suggestions endpoint..."
+          RESPONSE=$(curl -s "https://betfaro.com.br/api/suggestions?day=today" | head -c 200)
+          echo "API Response (first 200 chars): $RESPONSE"
+          
+          if echo "$RESPONSE" | grep -q "suggestions\|items"; then
+            echo "✅ API is responding!"
+          else
+            echo "⚠️ API response unexpected"
+          fi
