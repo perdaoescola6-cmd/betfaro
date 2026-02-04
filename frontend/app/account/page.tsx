@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useEffect, useState, useCallback } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { 
   ArrowLeft,
@@ -10,45 +10,90 @@ import {
   Calendar,
   Shield,
   CreditCard,
-  LogOut
+  LogOut,
+  CheckCircle,
+  Loader2
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 
 export default function AccountPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [user, setUser] = useState<any>(null)
+  const [isPolling, setIsPolling] = useState(false)
+  const [showSuccess, setShowSuccess] = useState(false)
+  const supabase = createClient()
 
-  useEffect(() => {
-    const checkAuth = async () => {
-      const supabase = createClient()
-      const { data: { user: authUser } } = await supabase.auth.getUser()
-      
-      if (!authUser) {
-        router.push('/auth/login')
-        return
-      }
-
-      // Fetch subscription data
-      const { data: subscription } = await supabase
-        .from('subscriptions')
-        .select('*')
-        .eq('user_id', authUser.id)
-        .maybeSingle()
-
-      setUser({
-        id: authUser.id,
-        email: authUser.email,
-        created_at: authUser.created_at,
-        subscription: subscription ? {
-          plan: subscription.plan,
-          expires_at: subscription.current_period_end,
-          status: subscription.status
-        } : undefined
-      })
+  const fetchUserData = useCallback(async () => {
+    const { data: { user: authUser } } = await supabase.auth.getUser()
+    
+    if (!authUser) {
+      router.push('/auth/login')
+      return null
     }
 
-    checkAuth()
-  }, [router])
+    // Fetch subscription data
+    const { data: subscription } = await supabase
+      .from('subscriptions')
+      .select('*')
+      .eq('user_id', authUser.id)
+      .maybeSingle()
+
+    const userData = {
+      id: authUser.id,
+      email: authUser.email,
+      created_at: authUser.created_at,
+      subscription: subscription ? {
+        plan: subscription.plan,
+        expires_at: subscription.current_period_end,
+        status: subscription.status
+      } : undefined
+    }
+    
+    setUser(userData)
+    return userData
+  }, [supabase, router])
+
+  useEffect(() => {
+    fetchUserData()
+  }, [fetchUserData])
+
+  // Handle checkout success - poll for subscription update
+  useEffect(() => {
+    const success = searchParams.get('success')
+    const expectedPlan = searchParams.get('plan')
+    
+    if (success === 'true' && expectedPlan) {
+      setIsPolling(true)
+      setShowSuccess(true)
+      
+      // First, trigger a refresh sync with Stripe
+      fetch('/api/billing/refresh', { method: 'POST' }).catch(() => {})
+      
+      let attempts = 0
+      const maxAttempts = 15 // 30 seconds total
+      
+      const pollInterval = setInterval(async () => {
+        attempts++
+        const userData = await fetchUserData()
+        
+        // Check if plan was updated
+        if (userData?.subscription?.plan === expectedPlan) {
+          clearInterval(pollInterval)
+          setIsPolling(false)
+          // Clean URL
+          router.replace('/account')
+        } else if (attempts >= maxAttempts) {
+          clearInterval(pollInterval)
+          setIsPolling(false)
+          // Still clean URL even if polling timed out
+          router.replace('/account')
+        }
+      }, 2000)
+      
+      return () => clearInterval(pollInterval)
+    }
+  }, [searchParams, fetchUserData, router])
 
   const handleLogout = async () => {
     const supabase = createClient()
@@ -83,6 +128,29 @@ export default function AccountPage() {
 
       {/* Content */}
       <main className="max-w-3xl mx-auto p-6">
+        {/* Success Banner after checkout */}
+        {showSuccess && (
+          <div className="bg-green-500/10 border border-green-500/30 rounded-xl p-4 mb-6 flex items-center">
+            {isPolling ? (
+              <>
+                <Loader2 className="animate-spin text-green-400 mr-3" size={20} />
+                <div>
+                  <p className="text-green-400 font-medium">Ativando sua assinatura...</p>
+                  <p className="text-green-400/70 text-sm">Aguarde enquanto processamos seu pagamento.</p>
+                </div>
+              </>
+            ) : (
+              <>
+                <CheckCircle className="text-green-400 mr-3" size={20} />
+                <div>
+                  <p className="text-green-400 font-medium">Assinatura ativada com sucesso!</p>
+                  <p className="text-green-400/70 text-sm">Aproveite todos os benefícios do seu novo plano.</p>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
         {/* Profile Section */}
         <div className="bg-dark-surface border border-dark-border rounded-xl p-6 mb-6">
           <h2 className="text-lg font-semibold mb-6 flex items-center">

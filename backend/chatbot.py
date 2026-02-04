@@ -717,9 +717,12 @@ class ChatBot:
         # ═══════════════════════════════════════════════════════════════
         # DATA VERIFICATION BLOCK - Premium confirmation
         # ═══════════════════════════════════════════════════════════════
+        games_a = len(fixtures_a)
+        games_b = len(fixtures_b)
         lines.append("✅ Dados verificados: últimos 10 jogos de cada equipe")
+        lines.append(f"   {team_a['name']}: {games_a} jogos oficiais • {team_b['name']}: {games_b} jogos oficiais")
         if date_range_a.get("start") and date_range_b.get("start"):
-            lines.append(f"   Período: {date_range_a.get('end', '')} a {date_range_a.get('start', '')} | {date_range_b.get('end', '')} a {date_range_b.get('start', '')}")
+            lines.append(f"   Período: {date_range_a.get('end', '')} → {date_range_a.get('start', '')}")
         lines.append("")
         
         # ═══════════════════════════════════════════════════════════════
@@ -1206,24 +1209,70 @@ class ChatBot:
         # For now, return empty stats
         return corners, cards
     
+    def _get_result(self, fixture: Dict, team_id: int) -> str:
+        """Get single match result (W/D/L) from team_id perspective
+        
+        CRITICAL: This must correctly determine W/D/L from the perspective of team_id
+        - W = team_id scored MORE goals than opponent
+        - D = team_id scored SAME goals as opponent
+        - L = team_id scored FEWER goals than opponent
+        """
+        teams = fixture.get("teams", {})
+        goals = fixture.get("goals", {})
+        home_team = teams.get("home", {})
+        
+        # Get goals with proper None handling
+        home_goals = goals.get("home")
+        away_goals = goals.get("away")
+        
+        # Return None if goals are missing
+        if home_goals is None or away_goals is None:
+            return None
+        
+        # Convert to int to be safe
+        home_goals = int(home_goals)
+        away_goals = int(away_goals)
+        
+        # Determine if team_id was home or away
+        is_home = home_team.get("id") == team_id
+        
+        # Calculate goals FOR and AGAINST from team_id perspective
+        if is_home:
+            goals_for = home_goals
+            goals_against = away_goals
+        else:
+            goals_for = away_goals
+            goals_against = home_goals
+        
+        # Determine result from team_id perspective
+        if goals_for > goals_against:
+            return "W"
+        elif goals_for == goals_against:
+            return "D"
+        else:
+            return "L"
+    
     def _get_form_string(self, fixtures: List[Dict], team_id: int) -> str:
-        """Get form string for last games"""
+        """Get form string for last games using _get_result"""
         form = []
+        
         for fixture in fixtures:
-            teams = fixture.get("teams", {})
-            goals = fixture.get("goals", {})
-            home_team = teams.get("home", {})
-            away_team = teams.get("away", {})
-            
-            home_goals = goals.get("home", 0)
-            away_goals = goals.get("away", 0)
-            
-            if home_team.get("id") == team_id:
-                result = "W" if home_goals > away_goals else "D" if home_goals == away_goals else "L"
-            else:
-                result = "W" if away_goals > home_goals else "D" if away_goals == home_goals else "L"
-            
-            form.append(result)
+            result = self._get_result(fixture, team_id)
+            if result:
+                form.append(result)
+                
+                # Debug log for verification
+                teams = fixture.get("teams", {})
+                goals = fixture.get("goals", {})
+                home_team = teams.get("home", {})
+                away_team = teams.get("away", {})
+                fixture_date = fixture.get("fixture", {}).get("date", "")[:10]
+                home_name = home_team.get("name", "?")
+                away_name = away_team.get("name", "?")
+                home_goals = goals.get("home", 0)
+                away_goals = goals.get("away", 0)
+                is_home = home_team.get("id") == team_id
+                logger.debug(f"[FORM] {fixture_date} | {home_name} {home_goals}-{away_goals} {away_name} | TeamID {team_id} {'(H)' if is_home else '(A)'} → {result}")
         
         return " ".join(form)
     
