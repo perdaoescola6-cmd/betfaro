@@ -686,17 +686,23 @@ async def chat_internal(
     x_user_email: str = Header(None),
     x_user_plan: str = Header(None),
     x_has_subscription: str = Header(None),
+    x_debug_id: str = Header(None),
     session: Session = Depends(get_session)
 ):
     """Internal endpoint for chat - called by Next.js API after auth verification"""
+    debug_id = x_debug_id or "no-debug-id"
+    logger.info(f"[{debug_id}] Internal chat request from {x_user_email} plan={x_user_plan}")
+    
     internal_key = os.getenv("INTERNAL_API_KEY", "betfaro_internal_2024")
     if x_internal_key != internal_key:
+        logger.warning(f"[{debug_id}] Invalid internal key")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid internal key"
         )
     
     if not x_user_id:
+        logger.warning(f"[{debug_id}] Missing user ID")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="User ID required"
@@ -705,54 +711,64 @@ async def chat_internal(
     # Check subscription (passed from Next.js which checks Supabase)
     has_subscription = x_has_subscription == 'true'
     if not has_subscription:
+        logger.info(f"[{debug_id}] User {x_user_email} has no subscription")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Assinatura ativa necessária para usar o chat. Acesse a página de Planos para assinar."
         )
     
     # Get user from database or create if not exists (sync from Supabase)
-    user = session.exec(select(User).where(User.id == x_user_id)).first()
-    if not user:
-        # Auto-create user from Supabase auth
-        user = User(
-            id=x_user_id,
-            email=x_user_email or "unknown@betfaro.com",
-            hashed_password="supabase_auth",  # Not used, auth is via Supabase
-            is_active=True,
-            is_admin=False,
-            created_at=datetime.utcnow()
-        )
-        session.add(user)
-        session.commit()
-        session.refresh(user)
-        logger.info(f"Auto-created user from Supabase: {x_user_email}")
-    
-    # Save user message
-    user_message = ChatMessage(
-        user_id=user.id,
-        role="user",
-        content=message.content,
-        extra_data=None,
-        created_at=datetime.utcnow()
-    )
-    session.add(user_message)
-    
-    # Process message
     try:
+        user = session.exec(select(User).where(User.id == x_user_id)).first()
+        if not user:
+            # Auto-create user from Supabase auth
+            user = User(
+                id=x_user_id,
+                email=x_user_email or "unknown@betfaro.com",
+                hashed_password="supabase_auth",  # Not used, auth is via Supabase
+                is_active=True,
+                is_admin=False,
+                created_at=datetime.utcnow()
+            )
+            session.add(user)
+            session.commit()
+            session.refresh(user)
+            logger.info(f"[{debug_id}] Auto-created user from Supabase: {x_user_email}")
+    except Exception as db_error:
+        logger.error(f"[{debug_id}] Database error creating user: {db_error}")
+        # Continue without saving to DB - chat can still work
+        user = type('User', (), {'id': x_user_id, 'email': x_user_email or 'unknown'})()
+    
+    # Process message (don't save to DB if it might fail)
+    try:
+        logger.info(f"[{debug_id}] Processing message: {message.content[:50]}...")
         response = await chatbot.process_message(message.content, user)
         
-        # Save bot response
-        bot_message = ChatMessage(
-            user_id=user.id,
-            role="assistant",
-            content=response,
-            extra_data=None,
-            created_at=datetime.utcnow()
-        )
-        session.add(bot_message)
-        session.commit()
+        # Try to save messages but don't fail if DB is unavailable
+        try:
+            user_message = ChatMessage(
+                user_id=x_user_id,
+                role="user",
+                content=message.content,
+                extra_data=None,
+                created_at=datetime.utcnow()
+            )
+            session.add(user_message)
+            
+            bot_message = ChatMessage(
+                user_id=x_user_id,
+                role="assistant",
+                content=response,
+                extra_data=None,
+                created_at=datetime.utcnow()
+            )
+            session.add(bot_message)
+            session.commit()
+        except Exception as save_error:
+            logger.warning(f"[{debug_id}] Could not save messages to DB: {save_error}")
+            # Continue anyway - response was generated successfully
         
-        logger.info(f"Internal chat processed for user {user.email}")
+        logger.info(f"[{debug_id}] Chat processed successfully for {x_user_email}")
         
         return ChatResponse(
             response=response,
@@ -762,13 +778,15 @@ async def chat_internal(
     except Exception as e:
         import traceback
         error_trace = traceback.format_exc()
-        logger.error(f"Internal chat processing error: {str(e)}\n{error_trace}")
+        logger.error(f"[{debug_id}] Chat processing error: {str(e)}\n{error_trace}")
         
-        error_response = "⚠️ A API está instável agora. Tente novamente em alguns segundos.\n\n"
-        error_response += "Se o problema persistir, verifique:\n"
-        error_response += "  • Se os nomes dos times estão corretos\n"
-        error_response += "  • Use o formato: Time A x Time B\n\n"
-        error_response += "💡 Exemplos: Arsenal x Chelsea, Benfica vs Porto"
+        # Return a friendly error message instead of 500
+        error_response = "⚠️ Não consegui processar sua análise agora.\n\n"
+        error_response += "Possíveis causas:\n"
+        error_response += "  • API de dados temporariamente indisponível\n"
+        error_response += "  • Time não encontrado no banco de dados\n\n"
+        error_response += "💡 Tente novamente em alguns segundos.\n"
+        error_response += "Use o formato: Time A x Time B (ex: Arsenal x Chelsea)"
         
         return ChatResponse(
             response=error_response,
