@@ -137,77 +137,13 @@ class ChatBot:
             return self._format_friendly_fallback(str(e))
     
     def _extract_teams_from_text(self, text: str) -> List[str]:
-        """Extract team names directly from text using robust regex patterns"""
-        import logging
-        logger = logging.getLogger(__name__)
-        
+        """Extract RAW team names from text - DO NOT resolve here, let TeamResolver handle it"""
         teams = []
-        original_text = text.strip()
         text_lower = text.lower().strip()
         
-        logger.info(f"[PARSE] Input: '{original_text}'")
-        
-        # Known team aliases for direct matching (comprehensive list)
-        known_teams = {
-            # England
-            "chelsea": "Chelsea", "arsenal": "Arsenal", "liverpool": "Liverpool",
-            "manchester united": "Manchester United", "man united": "Manchester United", "man utd": "Manchester United",
-            "manchester city": "Manchester City", "man city": "Manchester City",
-            "tottenham": "Tottenham", "spurs": "Tottenham",
-            "newcastle": "Newcastle", "west ham": "West Ham", "aston villa": "Aston Villa",
-            "everton": "Everton", "wolves": "Wolves", "brighton": "Brighton",
-            "crystal palace": "Crystal Palace", "fulham": "Fulham", "brentford": "Brentford",
-            "bournemouth": "Bournemouth", "nottingham": "Nottingham Forest",
-            "leicester": "Leicester", "leeds": "Leeds", "southampton": "Southampton",
-            # Portugal
-            "benfica": "Benfica", "porto": "FC Porto", "fc porto": "FC Porto",
-            "sporting": "Sporting CP", "braga": "SC Braga",
-            # Spain
-            "real madrid": "Real Madrid", "barcelona": "Barcelona", "barca": "Barcelona",
-            "atletico madrid": "Atletico Madrid", "atletico": "Atletico Madrid",
-            "sevilla": "Sevilla", "valencia": "Valencia", "villarreal": "Villarreal",
-            "betis": "Real Betis", "athletic bilbao": "Athletic Club", "bilbao": "Athletic Club",
-            "sociedad": "Real Sociedad", "real sociedad": "Real Sociedad",
-            # Germany - Bundesliga
-            "bayern": "Bayern Munich", "bayern munich": "Bayern Munich", "bayern munchen": "Bayern Munich",
-            "dortmund": "Borussia Dortmund", "borussia dortmund": "Borussia Dortmund", "bvb": "Borussia Dortmund",
-            "leverkusen": "Bayer Leverkusen", "bayer leverkusen": "Bayer Leverkusen", "bayer": "Bayer Leverkusen",
-            "rb leipzig": "RB Leipzig", "leipzig": "RB Leipzig",
-            "frankfurt": "Eintracht Frankfurt", "eintracht frankfurt": "Eintracht Frankfurt",
-            "wolfsburg": "VfL Wolfsburg", "freiburg": "SC Freiburg",
-            "hoffenheim": "Hoffenheim", "mainz": "Mainz 05",
-            "augsburg": "Augsburg", "werder bremen": "Werder Bremen", "bremen": "Werder Bremen",
-            "monchengladbach": "Borussia Monchengladbach", "gladbach": "Borussia Monchengladbach",
-            "union berlin": "Union Berlin", "koln": "FC Koln", "cologne": "FC Koln",
-            "st. pauli": "FC St. Pauli", "st pauli": "FC St. Pauli", "fc st. pauli": "FC St. Pauli", "fc st pauli": "FC St. Pauli",
-            "hamburg": "Hamburger SV", "schalke": "Schalke 04",
-            "stuttgart": "VfB Stuttgart", "heidenheim": "Heidenheim",
-            "bochum": "VfL Bochum", "darmstadt": "Darmstadt 98",
-            # Italy
-            "juventus": "Juventus", "milan": "AC Milan", "ac milan": "AC Milan",
-            "inter": "Inter", "inter milan": "Inter", "napoli": "Napoli",
-            "roma": "AS Roma", "lazio": "Lazio",
-            "bologna": "Bologna", "fiorentina": "Fiorentina", "atalanta": "Atalanta",
-            "torino": "Torino", "udinese": "Udinese", "sassuolo": "Sassuolo",
-            "monza": "Monza", "empoli": "Empoli", "lecce": "Lecce",
-            "cagliari": "Cagliari", "verona": "Verona", "genoa": "Genoa",
-            # France
-            "psg": "Paris Saint Germain", "paris saint germain": "Paris Saint Germain",
-            "marseille": "Marseille", "lyon": "Lyon", "monaco": "Monaco", "lille": "Lille",
-            "nice": "Nice", "lens": "Lens", "rennes": "Rennes",
-            # Brazil
-            "flamengo": "Flamengo", "palmeiras": "Palmeiras", "corinthians": "Corinthians",
-            "sao paulo": "Sao Paulo", "santos": "Santos", "gremio": "Gremio",
-            "internacional": "Internacional", "cruzeiro": "Cruzeiro",
-            "botafogo": "Botafogo", "fluminense": "Fluminense", "vasco": "Vasco DA Gama",
-            # Netherlands
-            "ajax": "Ajax", "feyenoord": "Feyenoord", "psv": "PSV Eindhoven",
-            # Scotland
-            "celtic": "Celtic", "rangers": "Rangers",
-        }
+        logger.info(f"[PARSE] Input: '{text}'")
         
         # ROBUST SEPARATORS: x, vs, versus, × (NOT hyphen - it's used in team names like Al-Khaleej)
-        # Pattern captures: anything before separator, separator, anything after
         separators = r'\s+(?:x|vs\.?|versus|v\.?|×)\s+'
         
         # Try to split by separator first (most reliable)
@@ -218,7 +154,6 @@ class ChatBot:
             team_b_raw = parts[1].strip()
             
             # Clean team B from trailing market/odds info
-            # Remove common suffixes: over, under, btts, @, numbers at end
             team_b_raw = re.sub(r'\s+(?:over|under|o|u)\s*\d.*$', '', team_b_raw, flags=re.IGNORECASE)
             team_b_raw = re.sub(r'\s+btts.*$', '', team_b_raw, flags=re.IGNORECASE)
             team_b_raw = re.sub(r'\s+ambas?.*$', '', team_b_raw, flags=re.IGNORECASE)
@@ -226,15 +161,10 @@ class ChatBot:
             team_b_raw = re.sub(r'\s+\d+[.,]\d+.*$', '', team_b_raw)
             team_b_raw = team_b_raw.strip()
             
-            logger.info(f"[PARSE] Split result: team_a='{team_a_raw}', team_b='{team_b_raw}'")
-            
-            # Resolve team names
-            team_a = self._resolve_team_alias(team_a_raw, known_teams)
-            team_b = self._resolve_team_alias(team_b_raw, known_teams)
-            
-            if team_a and team_b:
-                teams = [team_a, team_b]
-                logger.info(f"[PARSE] Resolved: {teams}")
+            # Return RAW names - TeamResolver will handle resolution with Brazil priority
+            if team_a_raw and team_b_raw:
+                teams = [team_a_raw, team_b_raw]
+                logger.info(f"[PARSE] Extracted RAW teams: {teams}")
         
         return teams
     
