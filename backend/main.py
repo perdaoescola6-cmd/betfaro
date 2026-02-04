@@ -700,13 +700,22 @@ async def chat_internal(
             detail="User ID required"
         )
     
-    # Get user from database
+    # Get user from database or create if not exists (sync from Supabase)
     user = session.exec(select(User).where(User.id == x_user_id)).first()
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
+        # Auto-create user from Supabase auth
+        user = User(
+            id=x_user_id,
+            email=x_user_email or "unknown@betfaro.com",
+            hashed_password="supabase_auth",  # Not used, auth is via Supabase
+            is_active=True,
+            is_admin=False,
+            created_at=datetime.utcnow()
         )
+        session.add(user)
+        session.commit()
+        session.refresh(user)
+        logger.info(f"Auto-created user from Supabase: {x_user_email}")
     
     # Check subscription
     if not check_user_subscription(user):
