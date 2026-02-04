@@ -2,16 +2,14 @@ import { NextRequest, NextResponse } from 'next/server'
 import { headers } from 'next/headers'
 import Stripe from 'stripe'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getPlanFromPriceId } from '@/lib/stripe'
-
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!)
-
-const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!
+import { getPlanFromPriceId, getStripe } from '@/lib/stripe'
 
 export async function POST(request: NextRequest) {
   const body = await request.text()
   const headersList = await headers()
   const signature = headersList.get('stripe-signature')!
+  const stripe = getStripe()
+  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!
 
   let event: Stripe.Event
 
@@ -35,7 +33,7 @@ export async function POST(request: NextRequest) {
         const subscriptionId = session.subscription as string
 
         if (userId && subscriptionId) {
-          const subscription = await stripe.subscriptions.retrieve(subscriptionId) as any
+          const subscription = await getStripe().subscriptions.retrieve(subscriptionId) as any
           const priceId = subscription.items.data[0]?.price.id
           const plan = getPlanFromPriceId(priceId) || 'pro'
           const periodEnd = subscription.current_period_end 
@@ -131,7 +129,7 @@ export async function POST(request: NextRequest) {
         const subscriptionId = invoice.subscription as string
 
         if (subscriptionId) {
-          const subscription = await stripe.subscriptions.retrieve(subscriptionId) as any
+          const subscription = await getStripe().subscriptions.retrieve(subscriptionId) as any
           const userId = subscription.metadata?.user_id
 
           if (userId) {
@@ -155,7 +153,7 @@ export async function POST(request: NextRequest) {
         const subscriptionId = invoice.subscription as string
 
         if (subscriptionId) {
-          const subscription = await stripe.subscriptions.retrieve(subscriptionId) as any
+          const subscription = await getStripe().subscriptions.retrieve(subscriptionId) as any
           const userId = subscription.metadata?.user_id
 
           if (userId) {
