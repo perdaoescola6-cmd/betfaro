@@ -99,6 +99,13 @@ export default function PicksPage() {
   useEffect(() => {
     if (isElite) {
       fetchPicks(activeTab, false)
+      
+      // Auto-refresh every 10 minutes
+      const interval = setInterval(() => {
+        fetchPicks(activeTab, false)
+      }, 10 * 60 * 1000)
+      
+      return () => clearInterval(interval)
     }
   }, [isElite, activeTab])
 
@@ -156,11 +163,23 @@ export default function PicksPage() {
     setError(null)
 
     try {
-      const response = await fetch(`/api/picks?range=${range}&refresh=${forceRefresh}`)
+      const response = await fetch(`/api/picks?range=${range}&refresh=${forceRefresh}`, {
+        cache: 'no-store'
+      })
 
       if (response.ok) {
         const data: PicksResponse = await response.json()
-        setPicks(data.picks)
+        
+        // Filter only future games (kickoff > now)
+        const now = new Date()
+        const futurePicks = data.picks.filter(pick => {
+          const kickoff = new Date(pick.date_iso)
+          return kickoff > now
+        })
+        
+        console.log(`[picks] Filtered ${data.picks.length - futurePicks.length} past games, showing ${futurePicks.length} future picks`)
+        
+        setPicks(futurePicks)
         setMeta(data.meta)
       } else {
         const errorData = await response.json()

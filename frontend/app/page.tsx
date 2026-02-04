@@ -43,7 +43,9 @@ interface Suggestion {
   label: string
   query: string
   league?: string
-  kickoffTime?: string
+  kickoffAt?: string
+  kickoffDisplay?: string
+  tier?: number
 }
 
 export default function Home() {
@@ -90,16 +92,16 @@ export default function Home() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, isLoading])
 
-  // Load dynamic suggestions on mount
+  // Load dynamic suggestions on mount and auto-refresh every 10 minutes
   useEffect(() => {
     const loadSuggestions = async () => {
       setSuggestionsLoading(true)
       try {
-        const response = await fetch('/api/suggestions?day=today')
+        const response = await fetch('/api/suggestions?limit=8&days=2', { cache: 'no-store' })
         if (response.ok) {
           const data = await response.json()
-          if (data.suggestions && data.suggestions.length > 0) {
-            setSuggestions(data.suggestions)
+          if (data.items && data.items.length > 0) {
+            setSuggestions(data.items)
           } else {
             setSuggestions(fallbackSuggestions)
           }
@@ -113,7 +115,24 @@ export default function Home() {
         setSuggestionsLoading(false)
       }
     }
+    
     loadSuggestions()
+    
+    // Auto-refresh every 10 minutes
+    const interval = setInterval(loadSuggestions, 10 * 60 * 1000)
+    
+    // Also refresh at midnight
+    const checkMidnight = setInterval(() => {
+      const now = new Date()
+      if (now.getHours() === 0 && now.getMinutes() === 0) {
+        loadSuggestions()
+      }
+    }, 60 * 1000)
+    
+    return () => {
+      clearInterval(interval)
+      clearInterval(checkMidnight)
+    }
   }, [])
 
   const checkAuth = async () => {
@@ -561,28 +580,52 @@ export default function Home() {
                 <p className="text-gray-400 mb-6">
                   Digite um jogo para começar sua análise
                 </p>
-                <div className="flex flex-wrap justify-center gap-2">
+                {/* Premium Suggestion Cards */}
+                <div className="w-full max-w-3xl mx-auto">
                   {suggestionsLoading ? (
-                    <div className="flex items-center space-x-2 text-gray-400">
-                      <div className="animate-spin h-4 w-4 border-2 border-blue-500 border-t-transparent rounded-full"></div>
-                      <span className="text-sm">Carregando jogos...</span>
+                    <div className="flex items-center justify-center space-x-2 text-gray-400 py-4">
+                      <div className="animate-spin h-5 w-5 border-2 border-amber-500 border-t-transparent rounded-full"></div>
+                      <span className="text-sm">Carregando jogos de hoje...</span>
                     </div>
                   ) : (
-                    suggestions.map((suggestion, index) => (
-                      <button
-                        key={index}
-                        onClick={() => sendMessageWithQuery(suggestion.query)}
-                        className="btn-secondary text-sm group relative"
-                        title={suggestion.league || ''}
-                      >
-                        <span>{suggestion.label}</span>
-                        {suggestion.league && (
-                          <span className="ml-1 text-xs text-gray-500 hidden group-hover:inline">
-                            ({suggestion.league})
-                          </span>
-                        )}
-                      </button>
-                    ))
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {suggestions.slice(0, 8).map((suggestion, index) => (
+                        <button
+                          key={index}
+                          onClick={() => sendMessageWithQuery(suggestion.query)}
+                          className="group relative bg-dark-surface/80 hover:bg-dark-surface border border-dark-border hover:border-amber-500/50 rounded-xl p-4 text-left transition-all duration-200 hover:shadow-lg hover:shadow-amber-500/10"
+                        >
+                          {/* League Tag */}
+                          {suggestion.league && (
+                            <span className="absolute top-3 right-3 text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 uppercase tracking-wide">
+                              {suggestion.league}
+                            </span>
+                          )}
+                          
+                          {/* Teams */}
+                          <div className="font-semibold text-white group-hover:text-amber-50 pr-16 leading-tight">
+                            {suggestion.label}
+                          </div>
+                          
+                          {/* Kickoff Time */}
+                          {suggestion.kickoffDisplay && (
+                            <div className="mt-2 text-xs text-gray-400 group-hover:text-gray-300 flex items-center gap-1.5">
+                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                              </svg>
+                              {suggestion.kickoffDisplay}
+                            </div>
+                          )}
+                          
+                          {/* Hover indicator */}
+                          <div className="absolute bottom-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <svg className="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                            </svg>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
                   )}
                 </div>
               </div>
