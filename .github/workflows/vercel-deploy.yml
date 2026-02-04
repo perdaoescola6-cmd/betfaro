@@ -26,17 +26,15 @@ jobs:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
         run: |
-          cd frontend
-          
-          # Create .vercel directory with project config
-          mkdir -p .vercel
-          echo "{\"orgId\":\"$VERCEL_ORG_ID\",\"projectId\":\"$VERCEL_PROJECT_ID\"}" > .vercel/project.json
+          # Create .vercel directory in frontend with project config
+          mkdir -p frontend/.vercel
+          echo "{\"orgId\":\"$VERCEL_ORG_ID\",\"projectId\":\"$VERCEL_PROJECT_ID\"}" > frontend/.vercel/project.json
           echo "Project config:"
-          cat .vercel/project.json
+          cat frontend/.vercel/project.json
           
-          # Deploy using token
+          # Deploy from root, specifying frontend as the directory
           echo "Deploying to Vercel..."
-          vercel deploy --prod --yes --token=$VERCEL_TOKEN 2>&1 | tee deploy.log || true
+          vercel deploy --prod --yes --token=$VERCEL_TOKEN --cwd=frontend 2>&1 | tee deploy.log || true
           
           # Show full log for debugging
           echo "=== Full deploy log ==="
