@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 
+// v2 - Direct API-Football integration with future games filter
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
