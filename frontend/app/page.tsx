@@ -158,18 +158,19 @@ export default function Home() {
       if (response.ok) {
         const data = await response.json()
         const assistantMessage: Message = {
-          id: data.timestamp,
+          id: data.debugId || Date.now().toString(),
           role: 'assistant',
-          content: data.response,
-          timestamp: new Date(data.timestamp)
+          content: data.reply || data.response || 'Resposta recebida',
+          timestamp: new Date()
         }
         setMessages(prev => [...prev, assistantMessage])
       } else {
         const error = await response.json()
+        const errorMessage = error.error?.message || error.detail || 'Ocorreu um erro ao processar sua mensagem.'
         setMessages(prev => [...prev, {
           id: Date.now().toString(),
           role: 'assistant',
-          content: `❌ Erro: ${error.detail || 'Ocorreu um erro ao processar sua mensagem.'}`,
+          content: `❌ ${errorMessage}`,
           timestamp: new Date()
         }])
       }
