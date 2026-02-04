@@ -20,32 +20,30 @@ jobs:
       - name: Install Vercel CLI
         run: npm install -g vercel@latest
 
-      - name: Link and Deploy to Vercel
+      - name: Create Vercel Project Config
         env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
         run: |
-          # Create .vercel directory in frontend with project config
           mkdir -p frontend/.vercel
           echo "{\"orgId\":\"$VERCEL_ORG_ID\",\"projectId\":\"$VERCEL_PROJECT_ID\"}" > frontend/.vercel/project.json
-          echo "Project config:"
+          echo "Project config created:"
           cat frontend/.vercel/project.json
+
+      - name: Deploy to Vercel
+        id: deploy
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        working-directory: ./frontend
+        run: |
+          echo "Starting Vercel deployment..."
+          DEPLOY_URL=$(vercel deploy --prod --yes --token=$VERCEL_TOKEN 2>&1)
+          echo "Deploy output: $DEPLOY_URL"
           
-          # Deploy from root, specifying frontend as the directory
-          echo "Deploying to Vercel..."
-          vercel deploy --prod --yes --token=$VERCEL_TOKEN --cwd=frontend 2>&1 | tee deploy.log || true
-          
-          # Show full log for debugging
-          echo "=== Full deploy log ==="
-          cat deploy.log
-          
-          # Extract URL from output
-          URL=$(grep -oE 'https://[^ ]+\.vercel\.app' deploy.log | head -1 || echo "")
-          if [ -z "$URL" ]; then
-            URL=$(grep -oE 'https://betfaro[^ ]+' deploy.log | head -1 || echo "URL not found")
-          fi
-          echo "Deployed to: $URL"
+          # Extract just the URL
+          URL=$(echo "$DEPLOY_URL" | grep -oE 'https://[a-zA-Z0-9.-]+\.vercel\.app' | tail -1)
+          echo "Extracted URL: $URL"
+          echo "url=$URL" >> $GITHUB_OUTPUT
           
           echo "### 🚀 Deployed to Vercel" >> $GITHUB_STEP_SUMMARY
           echo "**URL:** $URL" >> $GITHUB_STEP_SUMMARY
