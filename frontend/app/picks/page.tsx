@@ -177,8 +177,6 @@ export default function PicksPage() {
           return kickoff > now
         })
         
-        console.log(`[picks] Filtered ${data.picks.length - futurePicks.length} past games, showing ${futurePicks.length} future picks`)
-        
         setPicks(futurePicks)
         setMeta(data.meta)
       } else {

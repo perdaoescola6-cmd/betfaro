@@ -72,7 +72,6 @@ function AccountContent() {
       
       const syncAndCheck = async () => {
         attempts++
-        console.log(`[SYNC] Attempt ${attempts}/${maxAttempts} - syncing with Stripe...`)
         
         try {
           // Call refresh to sync with Stripe
@@ -81,11 +80,9 @@ function AccountContent() {
             cache: 'no-store',
           })
           const refreshData = await refreshResponse.json()
-          console.log(`[SYNC] Refresh response:`, refreshData)
           
           // If refresh succeeded and plan matches, we're done
           if (refreshData.success && refreshData.plan === expectedPlan) {
-            console.log(`[SYNC] Plan updated to ${expectedPlan}!`)
             await fetchUserData() // Refresh UI
             setIsPolling(false)
             router.replace('/account')
@@ -98,7 +95,6 @@ function AccountContent() {
         // Also check database directly
         const userData = await fetchUserData()
         if (userData?.subscription?.plan === expectedPlan) {
-          console.log(`[SYNC] Plan found in database: ${expectedPlan}`)
           setIsPolling(false)
           router.replace('/account')
           return true
@@ -115,7 +111,6 @@ function AccountContent() {
         if (done || attempts >= maxAttempts) {
           clearInterval(pollInterval)
           if (attempts >= maxAttempts) {
-            console.log('[SYNC] Max attempts reached, stopping polling')
             setIsPolling(false)
             router.replace('/account')
           }
