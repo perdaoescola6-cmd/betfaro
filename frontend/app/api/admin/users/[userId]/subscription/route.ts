@@ -4,9 +4,10 @@ import { createAdminClient } from '@/lib/supabase/admin'
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { userId: string } }
+  { params }: { params: Promise<{ userId: string }> }
 ) {
   try {
+    const { userId } = await params
     const supabase = await createClient()
     
     // Get authenticated user
@@ -34,7 +35,6 @@ export async function PATCH(
     }
 
     const { plan, status } = await request.json()
-    const userId = params.userId
 
     // Validate plan
     const validPlans = ['free', 'pro', 'elite']
