@@ -26,16 +26,23 @@ interface RunStats {
   durationMs: number
   details: Array<{ betId: string; fixtureId: string; market: string; newStatus: string }>
   errorDetails: Array<{ fixtureId: string; error: string }>
+  notes: Record<string, any>
 }
 
 /**
  * POST /api/bets/resolve
  * Vercel Cron job to resolve pending bets
  * Protected by CRON_SECRET
+ * 
+ * IMPORTANT: This endpoint ALWAYS logs to resolve_runs table,
+ * even on errors or when no bets are found.
  */
 export async function POST(request: NextRequest) {
   const startTime = Date.now()
   const runId = crypto.randomUUID()
+  
+  // Initialize Supabase with service role key (REQUIRED for admin operations)
+  const supabase = createClient(supabaseUrl, supabaseServiceKey)
   
   const stats: RunStats = {
     runId,
@@ -46,7 +53,11 @@ export async function POST(request: NextRequest) {
     errors: 0,
     durationMs: 0,
     details: [],
-    errorDetails: []
+    errorDetails: [],
+    notes: {
+      source: 'github_actions',
+      env: process.env.NODE_ENV || 'unknown'
+    }
   }
 
   console.log(`[${runId}] 🚀 Bet resolver started`)
@@ -61,15 +72,20 @@ export async function POST(request: NextRequest) {
     
     if (!isVercelCron && authToken !== CRON_SECRET) {
       console.log(`[${runId}] ❌ Unauthorized request`)
+      stats.notes.error = 'Unauthorized'
+      // Still log the attempt
+      stats.durationMs = Date.now() - startTime
+      await logRunGuaranteed(supabase, stats)
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
-
-    const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
     // 2. Acquire lock to prevent concurrent executions
     const lockAcquired = await acquireLock(supabase, runId)
     if (!lockAcquired) {
       console.log(`[${runId}] ⏭️ Skipped - another instance is running`)
+      stats.notes.skipped = 'locked'
+      stats.durationMs = Date.now() - startTime
+      await logRunGuaranteed(supabase, stats)
       return NextResponse.json({ 
         ok: true, 
         skipped: 'locked',
@@ -93,6 +109,7 @@ export async function POST(request: NextRequest) {
 
       if (fetchError) {
         console.error(`[${runId}] ❌ Error fetching bets:`, fetchError)
+        stats.notes.fetchError = fetchError.message
         throw new Error('Failed to fetch pending bets')
       }
 
@@ -100,15 +117,8 @@ export async function POST(request: NextRequest) {
       console.log(`[${runId}] 📊 Found ${stats.found} pending bets`)
 
       if (!pendingBets || pendingBets.length === 0) {
-        stats.durationMs = Date.now() - startTime
-        await logRun(supabase, stats)
-        await releaseLock(supabase)
-        return NextResponse.json({ 
-          ok: true, 
-          runId,
-          message: 'No pending bets to resolve',
-          ...stats
-        })
+        stats.notes.message = 'No pending bets to resolve'
+        // Don't return early - let finally block handle logging
       }
 
       // 4. Group bets by fixture_id
@@ -222,7 +232,7 @@ export async function POST(request: NextRequest) {
       }
 
       stats.durationMs = Date.now() - startTime
-      await logRun(supabase, stats)
+      await logRunGuaranteed(supabase, stats)
       
       console.log(`[${runId}] 🏁 Completed in ${stats.durationMs}ms - Resolved: ${stats.resolved}, Skipped: ${stats.skipped}, Errors: ${stats.errors}`)
 
@@ -245,7 +255,11 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     stats.durationMs = Date.now() - startTime
+    stats.notes.fatalError = error instanceof Error ? error.message : String(error)
     console.error(`[${runId}] 💥 Fatal error:`, error)
+    
+    // ALWAYS log to resolve_runs, even on fatal errors
+    await logRunGuaranteed(supabase, stats)
     
     return NextResponse.json({ 
       ok: false,
@@ -324,27 +338,47 @@ async function releaseLock(supabase: any): Promise<void> {
 }
 
 /**
- * Log run to database
+ * Log run to database - GUARANTEED to complete
+ * This function will retry and never throw, ensuring every run is logged
  */
-async function logRun(supabase: any, stats: RunStats): Promise<void> {
-  try {
-    await supabase
-      .from('resolve_runs')
-      .insert({
-        id: stats.runId,
-        found: stats.found,
-        processed: stats.processed,
-        resolved: stats.resolved,
-        skipped: stats.skipped,
-        errors: stats.errors,
-        duration_ms: stats.durationMs,
-        notes: {
-          details: stats.details.slice(0, 20),
-          errorDetails: stats.errorDetails
+async function logRunGuaranteed(supabase: any, stats: RunStats): Promise<void> {
+  const maxRetries = 3
+  
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const { error } = await supabase
+        .from('resolve_runs')
+        .insert({
+          id: stats.runId,
+          found: stats.found,
+          processed: stats.processed,
+          resolved: stats.resolved,
+          skipped: stats.skipped,
+          errors: stats.errors,
+          duration_ms: stats.durationMs,
+          notes: {
+            ...stats.notes,
+            details: stats.details.slice(0, 20),
+            errorDetails: stats.errorDetails
+          }
+        })
+      
+      if (error) {
+        console.error(`[${stats.runId}] ⚠️ Failed to log run (attempt ${attempt}/${maxRetries}):`, error)
+        if (attempt === maxRetries) {
+          console.error(`[${stats.runId}] ❌ CRITICAL: Could not log run after ${maxRetries} attempts`)
         }
-      })
-  } catch (err) {
-    console.error('Failed to log run:', err)
+        continue
+      }
+      
+      console.log(`[${stats.runId}] 📝 Run logged to resolve_runs`)
+      return
+    } catch (err) {
+      console.error(`[${stats.runId}] ⚠️ Exception logging run (attempt ${attempt}/${maxRetries}):`, err)
+      if (attempt < maxRetries) {
+        await new Promise(r => setTimeout(r, 500 * attempt)) // Exponential backoff
+      }
+    }
   }
 }
 
