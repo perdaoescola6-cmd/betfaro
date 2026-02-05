@@ -1,0 +1,90 @@
+{
+  "team_id": 99,
+  "team_name": "Test Team B",
+  "description": "10 fixtures with different pattern for testing",
+  "fixtures": [
+    {
+      "fixture": {"id": 2001, "date": "2024-01-28T18:00:00Z", "status": {"short": "FT"}},
+      "teams": {"home": {"id": 99, "name": "Test Team B"}, "away": {"id": 200, "name": "Rival 1"}},
+      "goals": {"home": 1, "away": 0},
+      "league": {"name": "La Liga", "type": "League"}
+    },
+    {
+      "fixture": {"id": 2002, "date": "2024-01-25T18:00:00Z", "status": {"short": "FT"}},
+      "teams": {"home": {"id": 201, "name": "Rival 2"}, "away": {"id": 99, "name": "Test Team B"}},
+      "goals": {"home": 2, "away": 2},
+      "league": {"name": "La Liga", "type": "League"}
+    },
+    {
+      "fixture": {"id": 2003, "date": "2024-01-22T18:00:00Z", "status": {"short": "FT"}},
+      "teams": {"home": {"id": 99, "name": "Test Team B"}, "away": {"id": 202, "name": "Rival 3"}},
+      "goals": {"home": 0, "away": 1},
+      "league": {"name": "La Liga", "type": "League"}
+    },
+    {
+      "fixture": {"id": 2004, "date": "2024-01-19T18:00:00Z", "status": {"short": "FT"}},
+      "teams": {"home": {"id": 203, "name": "Rival 4"}, "away": {"id": 99, "name": "Test Team B"}},
+      "goals": {"home": 0, "away": 2},
+      "league": {"name": "La Liga", "type": "League"}
+    },
+    {
+      "fixture": {"id": 2005, "date": "2024-01-16T18:00:00Z", "status": {"short": "FT"}},
+      "teams": {"home": {"id": 99, "name": "Test Team B"}, "away": {"id": 204, "name": "Rival 5"}},
+      "goals": {"home": 3, "away": 1},
+      "league": {"name": "La Liga", "type": "League"}
+    },
+    {
+      "fixture": {"id": 2006, "date": "2024-01-13T18:00:00Z", "status": {"short": "PEN"}},
+      "teams": {"home": {"id": 205, "name": "Rival 6"}, "away": {"id": 99, "name": "Test Team B"}},
+      "goals": {"home": 1, "away": 1},
+      "league": {"name": "Copa del Rey", "type": "Cup"}
+    },
+    {
+      "fixture": {"id": 2007, "date": "2024-01-10T18:00:00Z", "status": {"short": "FT"}},
+      "teams": {"home": {"id": 99, "name": "Test Team B"}, "away": {"id": 206, "name": "Rival 7"}},
+      "goals": {"home": 2, "away": 0},
+      "league": {"name": "La Liga", "type": "League"}
+    },
+    {
+      "fixture": {"id": 2008, "date": "2024-01-07T18:00:00Z", "status": {"short": "FT"}},
+      "teams": {"home": {"id": 207, "name": "Rival 8"}, "away": {"id": 99, "name": "Test Team B"}},
+      "goals": {"home": 3, "away": 2},
+      "league": {"name": "La Liga", "type": "League"}
+    },
+    {
+      "fixture": {"id": 2009, "date": "2024-01-04T18:00:00Z", "status": {"short": "FT"}},
+      "teams": {"home": {"id": 99, "name": "Test Team B"}, "away": {"id": 208, "name": "Rival 9"}},
+      "goals": {"home": 1, "away": 1},
+      "league": {"name": "La Liga", "type": "League"}
+    },
+    {
+      "fixture": {"id": 2010, "date": "2024-01-01T18:00:00Z", "status": {"short": "FT"}},
+      "teams": {"home": {"id": 209, "name": "Rival 10"}, "away": {"id": 99, "name": "Test Team B"}},
+      "goals": {"home": 0, "away": 0},
+      "league": {"name": "La Liga", "type": "League"}
+    }
+  ],
+  "expected_stats": {
+    "fixtures_used": 10,
+    "form_5": "V E D V V",
+    "goals_for_list": [1, 2, 0, 2, 3, 1, 2, 2, 1, 0],
+    "goals_against_list": [0, 2, 1, 0, 1, 1, 0, 3, 1, 0],
+    "total_goals_list": [1, 4, 1, 2, 4, 2, 2, 5, 2, 0],
+    "sum_goals_for": 14,
+    "sum_goals_against": 9,
+    "sum_total_goals": 23,
+    "avg_goals_for": 1.4,
+    "avg_goals_against": 0.9,
+    "avg_total_goals_per_match": 2.3,
+    "wins": 5,
+    "draws": 4,
+    "losses": 1,
+    "win_rate_pct": 50.0,
+    "over_2_5_count": 3,
+    "over_2_5_pct": 30.0,
+    "over_1_5_count": 6,
+    "over_1_5_pct": 60.0,
+    "btts_count": 4,
+    "btts_pct": 40.0
+  }
+}

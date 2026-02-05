@@ -1,0 +1,90 @@
+{
+  "team_id": 42,
+  "team_name": "Test Team A",
+  "description": "10 fixtures with varied results for testing",
+  "fixtures": [
+    {
+      "fixture": {"id": 1001, "date": "2024-01-28T15:00:00Z", "status": {"short": "FT"}},
+      "teams": {"home": {"id": 42, "name": "Test Team A"}, "away": {"id": 100, "name": "Opponent 1"}},
+      "goals": {"home": 2, "away": 1},
+      "league": {"name": "Premier League", "type": "League"}
+    },
+    {
+      "fixture": {"id": 1002, "date": "2024-01-25T15:00:00Z", "status": {"short": "FT"}},
+      "teams": {"home": {"id": 101, "name": "Opponent 2"}, "away": {"id": 42, "name": "Test Team A"}},
+      "goals": {"home": 0, "away": 3},
+      "league": {"name": "Premier League", "type": "League"}
+    },
+    {
+      "fixture": {"id": 1003, "date": "2024-01-22T15:00:00Z", "status": {"short": "FT"}},
+      "teams": {"home": {"id": 42, "name": "Test Team A"}, "away": {"id": 102, "name": "Opponent 3"}},
+      "goals": {"home": 1, "away": 1},
+      "league": {"name": "Premier League", "type": "League"}
+    },
+    {
+      "fixture": {"id": 1004, "date": "2024-01-19T15:00:00Z", "status": {"short": "FT"}},
+      "teams": {"home": {"id": 103, "name": "Opponent 4"}, "away": {"id": 42, "name": "Test Team A"}},
+      "goals": {"home": 2, "away": 0},
+      "league": {"name": "Premier League", "type": "League"}
+    },
+    {
+      "fixture": {"id": 1005, "date": "2024-01-16T15:00:00Z", "status": {"short": "FT"}},
+      "teams": {"home": {"id": 42, "name": "Test Team A"}, "away": {"id": 104, "name": "Opponent 5"}},
+      "goals": {"home": 3, "away": 2},
+      "league": {"name": "Premier League", "type": "League"}
+    },
+    {
+      "fixture": {"id": 1006, "date": "2024-01-13T15:00:00Z", "status": {"short": "FT"}},
+      "teams": {"home": {"id": 105, "name": "Opponent 6"}, "away": {"id": 42, "name": "Test Team A"}},
+      "goals": {"home": 1, "away": 2},
+      "league": {"name": "Premier League", "type": "League"}
+    },
+    {
+      "fixture": {"id": 1007, "date": "2024-01-10T15:00:00Z", "status": {"short": "FT"}},
+      "teams": {"home": {"id": 42, "name": "Test Team A"}, "away": {"id": 106, "name": "Opponent 7"}},
+      "goals": {"home": 0, "away": 0},
+      "league": {"name": "Premier League", "type": "League"}
+    },
+    {
+      "fixture": {"id": 1008, "date": "2024-01-07T15:00:00Z", "status": {"short": "AET"}},
+      "teams": {"home": {"id": 107, "name": "Opponent 8"}, "away": {"id": 42, "name": "Test Team A"}},
+      "goals": {"home": 3, "away": 4},
+      "league": {"name": "FA Cup", "type": "Cup"}
+    },
+    {
+      "fixture": {"id": 1009, "date": "2024-01-04T15:00:00Z", "status": {"short": "FT"}},
+      "teams": {"home": {"id": 42, "name": "Test Team A"}, "away": {"id": 108, "name": "Opponent 9"}},
+      "goals": {"home": 2, "away": 2},
+      "league": {"name": "Premier League", "type": "League"}
+    },
+    {
+      "fixture": {"id": 1010, "date": "2024-01-01T15:00:00Z", "status": {"short": "FT"}},
+      "teams": {"home": {"id": 109, "name": "Opponent 10"}, "away": {"id": 42, "name": "Test Team A"}},
+      "goals": {"home": 1, "away": 3},
+      "league": {"name": "Premier League", "type": "League"}
+    }
+  ],
+  "expected_stats": {
+    "fixtures_used": 10,
+    "form_5": "V V E D V",
+    "goals_for_list": [2, 3, 1, 0, 3, 2, 0, 4, 2, 3],
+    "goals_against_list": [1, 0, 1, 2, 2, 1, 0, 3, 2, 1],
+    "total_goals_list": [3, 3, 2, 2, 5, 3, 0, 7, 4, 4],
+    "sum_goals_for": 20,
+    "sum_goals_against": 13,
+    "sum_total_goals": 33,
+    "avg_goals_for": 2.0,
+    "avg_goals_against": 1.3,
+    "avg_total_goals_per_match": 3.3,
+    "wins": 6,
+    "draws": 2,
+    "losses": 2,
+    "win_rate_pct": 60.0,
+    "over_2_5_count": 7,
+    "over_2_5_pct": 70.0,
+    "over_1_5_count": 9,
+    "over_1_5_pct": 90.0,
+    "btts_count": 7,
+    "btts_pct": 70.0
+  }
+}
