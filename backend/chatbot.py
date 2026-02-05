@@ -2,10 +2,12 @@ from typing import Dict, List, Optional, Tuple
 import asyncio
 import re
 import logging
-from datetime import datetime
+import json
+from datetime import datetime, timezone
 from football_api import FootballAPI
 from models import User, Subscription
 from team_resolver import TeamResolver
+from analysis_logger import analysis_logger
 
 logger = logging.getLogger(__name__)
 
@@ -380,12 +382,15 @@ class ChatBot:
         """Analyze match between two teams with strict data validation
         
         IMPORTANT: Only consumes quota if analysis is successful!
+        HARDENING: Implements fail-fast and structured logging for audit.
         """
+        original_query = f"{parsed.get('team_a', '')} vs {parsed.get('team_b', '')}"
         team_a_name = parsed["team_a"]
         team_b_name = parsed["team_b"]
         REQUIRED_GAMES = 10  # FIXED: Always 10 games per team
         markets = parsed.get("markets", [])
         odds = parsed.get("odds", [])
+        user_id = getattr(user, 'id', 0)
         
         # ═══════════════════════════════════════════════════════════════
         # STEP 1: RESOLVE TEAMS using TeamResolver (with Brazil priority)
@@ -396,10 +401,22 @@ class ChatBot:
         
         # Handle ambiguous names - DON'T consume quota
         if match_result.get("ambiguous"):
+            analysis_logger.log_analysis_failure(
+                user_id=user_id,
+                original_query=original_query,
+                error_type="AMBIGUOUS_TEAMS",
+                error_details="Team names are ambiguous, user clarification needed"
+            )
             return self._format_ambiguous_teams(match_result)
         
         # Handle resolution failure - DON'T consume quota
         if not match_result.get("success"):
+            analysis_logger.log_analysis_failure(
+                user_id=user_id,
+                original_query=original_query,
+                error_type="TEAM_NOT_FOUND",
+                error_details=f"Could not resolve teams: {team_a_name}, {team_b_name}"
+            )
             return self._format_team_not_found(team_a_name, team_b_name, match_result)
         
         team_a = {
@@ -428,15 +445,61 @@ class ChatBot:
         validated_a = self._validate_fixtures(fixtures_a_raw, team_a["id"], REQUIRED_GAMES)
         validated_b = self._validate_fixtures(fixtures_b_raw, team_b["id"], REQUIRED_GAMES)
         
-        # Check if we have enough valid data - DON'T consume quota if not
+        # FAIL-FAST: Check if we have enough valid data - DON'T consume quota if not
         if not validated_a["valid"] or not validated_b["valid"]:
+            analysis_logger.log_analysis_failure(
+                user_id=user_id,
+                original_query=original_query,
+                error_type="INSUFFICIENT_DATA",
+                error_details=f"Team A valid: {validated_a['valid']}, Team B valid: {validated_b['valid']}",
+                partial_data={
+                    "team_a": team_a,
+                    "team_b": team_b,
+                    "fixtures_a_count": len(validated_a.get("fixtures", [])),
+                    "fixtures_b_count": len(validated_b.get("fixtures", [])),
+                    "errors_a": validated_a.get("errors", []),
+                    "errors_b": validated_b.get("errors", [])
+                }
+            )
             return self._format_data_error(team_a["name"], team_b["name"], validated_a, validated_b)
         
         filtered_a = validated_a["fixtures"]
         filtered_b = validated_b["fixtures"]
         
         # ═══════════════════════════════════════════════════════════════
-        # STEP 4: GENERATE ANALYSIS WITH VERIFIED DATA
+        # STEP 4: CALCULATE STATS AND VALIDATE CONSISTENCY (FAIL-FAST)
+        # ═══════════════════════════════════════════════════════════════
+        stats_a = self._calculate_team_stats(filtered_a, team_a["id"])
+        stats_b = self._calculate_team_stats(filtered_b, team_b["id"])
+        
+        form_a = self._get_form_string(filtered_a[:5], team_a["id"])
+        form_b = self._get_form_string(filtered_b[:5], team_b["id"])
+        
+        # FAIL-FAST: Validate consistency between fixtures and calculated stats
+        consistency_a = analysis_logger.validate_consistency(filtered_a, stats_a, form_a, team_a["id"])
+        consistency_b = analysis_logger.validate_consistency(filtered_b, stats_b, form_b, team_b["id"])
+        
+        if not consistency_a["valid"] or not consistency_b["valid"]:
+            all_issues = consistency_a.get("issues", []) + consistency_b.get("issues", [])
+            analysis_logger.log_analysis_failure(
+                user_id=user_id,
+                original_query=original_query,
+                error_type="DATA_INCONSISTENCY",
+                error_details=f"Stats/form inconsistent with fixtures: {all_issues}",
+                partial_data={
+                    "team_a": team_a,
+                    "team_b": team_b,
+                    "consistency_issues_a": consistency_a.get("issues", []),
+                    "consistency_issues_b": consistency_b.get("issues", []),
+                    "expected_a": consistency_a.get("expected", {}),
+                    "expected_b": consistency_b.get("expected", {})
+                }
+            )
+            # FAIL-FAST: Do NOT generate analysis with inconsistent data
+            return self._format_consistency_error(team_a["name"], team_b["name"], all_issues)
+        
+        # ═══════════════════════════════════════════════════════════════
+        # STEP 5: GENERATE ANALYSIS WITH VERIFIED DATA
         # ═══════════════════════════════════════════════════════════════
         analysis = self._generate_match_analysis(
             team_a, team_b, 
@@ -448,7 +511,35 @@ class ChatBot:
         )
         
         # ═══════════════════════════════════════════════════════════════
-        # STEP 5: CONSUME QUOTA - Only after successful analysis!
+        # STEP 6: LOG SUCCESSFUL ANALYSIS FOR AUDIT
+        # ═══════════════════════════════════════════════════════════════
+        avg_over_2_5 = (stats_a.get("over_2_5", 0) + stats_b.get("over_2_5", 0)) / 2
+        avg_btts = (stats_a.get("btts", 0) + stats_b.get("btts", 0)) / 2
+        
+        fair_odds_data = {
+            "over_2_5": round(100 / avg_over_2_5, 2) if avg_over_2_5 > 0 else 0,
+            "under_2_5": round(100 / (100 - avg_over_2_5), 2) if avg_over_2_5 < 100 else 0,
+            "btts_yes": round(100 / avg_btts, 2) if avg_btts > 0 else 0,
+            "btts_no": round(100 / (100 - avg_btts), 2) if avg_btts < 100 else 0
+        }
+        
+        analysis_logger.log_analysis(
+            user_id=user_id,
+            original_query=original_query,
+            team_a=team_a,
+            team_b=team_b,
+            fixtures_a=filtered_a,
+            fixtures_b=filtered_b,
+            stats_a=stats_a,
+            stats_b=stats_b,
+            form_a=form_a,
+            form_b=form_b,
+            fair_odds=fair_odds_data,
+            success=True
+        )
+        
+        # ═══════════════════════════════════════════════════════════════
+        # STEP 7: CONSUME QUOTA - Only after successful analysis!
         # ═══════════════════════════════════════════════════════════════
         self._consume_quota(user)
         
@@ -493,6 +584,31 @@ class ChatBot:
         lines.append("  • Benfica x Porto ✓")
         lines.append("")
         lines.append("Digite /help para ver todos os comandos disponíveis.")
+        lines.append("")
+        lines.append("⚠️ Esta consulta NÃO consumiu sua cota.")
+        
+        return "\n".join(lines)
+    
+    def _format_consistency_error(self, team_a: str, team_b: str, issues: List[str]) -> str:
+        """Format message when data consistency check fails (FAIL-FAST)
+        
+        This is a critical error - the system detected that calculated stats
+        don't match the underlying fixture data. Analysis is blocked.
+        """
+        lines = []
+        lines.append("⚠️ ERRO DE CONSISTÊNCIA DE DADOS")
+        lines.append("─────────────────────────────────────────────────────────")
+        lines.append("")
+        lines.append(f"Não foi possível gerar análise para {team_a} vs {team_b}")
+        lines.append("")
+        lines.append("O sistema detectou inconsistência entre os dados da API")
+        lines.append("e os cálculos internos. Por segurança, a análise foi bloqueada.")
+        lines.append("")
+        lines.append("📋 Detalhes técnicos:")
+        for issue in issues[:5]:  # Show max 5 issues
+            lines.append(f"  • {issue}")
+        lines.append("")
+        lines.append("💡 Isso pode ser temporário. Tente novamente em alguns minutos.")
         lines.append("")
         lines.append("⚠️ Esta consulta NÃO consumiu sua cota.")
         
