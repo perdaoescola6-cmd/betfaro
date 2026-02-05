@@ -196,16 +196,69 @@ e os cálculos internos. Por segurança, a análise foi bloqueada.
 
 ---
 
-## 6️⃣ TESTES AUTOMATIZADOS
+## 6️⃣ FIXTURE STATUS & DATA INTEGRITY
+
+### Status Válidos (Incluídos nos Cálculos)
+
+| Status | Descrição | Incluído |
+|--------|-----------|----------|
+| `FT` | Full Time | ✅ Sim |
+| `AET` | After Extra Time | ✅ Sim |
+| `PEN` | Penalties | ✅ Sim |
+
+### Status Inválidos (Excluídos dos Cálculos)
+
+| Status | Descrição | Excluído |
+|--------|-----------|----------|
+| `NS` | Not Started | ✅ Excluído |
+| `TBD` | To Be Defined | ✅ Excluído |
+| `PST` | Postponed | ✅ Excluído |
+| `CANC` | Cancelled | ✅ Excluído |
+| `ABD` | Abandoned | ✅ Excluído |
+| `SUSP` | Suspended | ✅ Excluído |
+| `INT` | Interrupted | ✅ Excluído |
+| `1H/HT/2H/ET/BT/P` | Live | ✅ Excluído |
+
+### Validações de Integridade
+
+| Validação | Comportamento |
+|-----------|---------------|
+| Goals null/None | Fixture excluído |
+| Time não no fixture | Fixture excluído |
+| Amistoso/Friendly | Fixture excluído |
+| Duplicatas | Removidas (dedupe por ID) |
+| < 5 jogos válidos | **FAIL-FAST** - análise bloqueada |
+| < 10 jogos válidos | Aviso + continua com disponíveis |
+
+### Testes de Cobertura
+
+```
+tests/test_fixture_status_filtering.py - 30+ testes ✅
+├── TestFixtureStatusFiltering (8 status testados)
+├── TestGoalsValidation (null handling)
+├── TestInsufficientData (fail-fast)
+├── TestFriendlyExclusion (amistosos)
+├── TestDateOrdering (timezone-safe)
+├── TestTeamValidation (team in fixture)
+├── TestDuplicateHandling (dedupe)
+└── TestMixedScenarios (cenários reais)
+```
+
+---
+
+## 7️⃣ TESTES AUTOMATIZADOS
 
 ### Resumo
 
 ```
-tests/test_form_calculation.py      - 32 testes ✅
-tests/test_qa_comprehensive.py      - 16 testes ✅
-tests/test_integration_real.py      - 4 testes (requer API key)
+tests/test_form_calculation.py           - 32 testes ✅
+tests/test_qa_comprehensive.py           - 16 testes ✅
+tests/test_fixture_processor.py          - 24 testes ✅
+tests/test_fixture_status_filtering.py   - 30 testes ✅
+tests/test_e2e_flow.py                   - 15 testes ✅
+tests/test_integration_real.py           - 4 testes (requer API key)
 ─────────────────────────────────────────────────────────
-TOTAL: 48 testes passando (unitários)
+TOTAL: 117+ testes passando (unitários)
 ```
 
 ### Cobertura de Cálculos
