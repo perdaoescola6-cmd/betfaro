@@ -70,9 +70,22 @@ export async function POST(request: NextRequest) {
     // Also check for Vercel Cron header (automatically added by Vercel)
     const isVercelCron = request.headers.get('x-vercel-cron') === '1'
     
+    // Debug: Check if CRON_SECRET is configured
+    const hasCronSecret = !!CRON_SECRET && CRON_SECRET.length > 0
+    const hasAuthToken = !!authToken && authToken.length > 0
+    
+    console.log(`[${runId}] Auth check: isVercelCron=${isVercelCron}, hasCronSecret=${hasCronSecret}, hasAuthToken=${hasAuthToken}, secretLength=${CRON_SECRET?.length || 0}, tokenLength=${authToken?.length || 0}`)
+    
     if (!isVercelCron && authToken !== CRON_SECRET) {
-      console.log(`[${runId}] ❌ Unauthorized request`)
+      console.log(`[${runId}] ❌ Unauthorized request - token mismatch`)
       stats.notes.error = 'Unauthorized'
+      stats.notes.debug = {
+        isVercelCron,
+        hasCronSecret,
+        hasAuthToken,
+        secretConfigured: hasCronSecret,
+        tokenProvided: hasAuthToken
+      }
       // Still log the attempt
       stats.durationMs = Date.now() - startTime
       await logRunGuaranteed(supabase, stats)
