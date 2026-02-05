@@ -177,6 +177,34 @@ export async function GET(request: NextRequest) {
     const winrate = resolved > 0 ? (won / resolved) * 100 : 0
     const valueBets = bets?.filter(b => b.value_flag).length || 0
 
+    // Calculate ROI: (SUM(profit_loss) / SUM(stake)) * 100
+    // Only consider bets with status 'won' or 'lost' and valid stake
+    const betsWithStake = bets?.filter(b => 
+      ['won', 'lost'].includes(b.status) && 
+      b.stake && 
+      b.stake > 0
+    ) || []
+    
+    let totalStake = 0
+    let totalProfitLoss = 0
+    
+    for (const bet of betsWithStake) {
+      totalStake += bet.stake
+      // If profit_loss is stored in DB, use it; otherwise calculate
+      if (bet.profit_loss !== null && bet.profit_loss !== undefined) {
+        totalProfitLoss += bet.profit_loss
+      } else {
+        // Calculate profit/loss based on status
+        if (bet.status === 'won') {
+          totalProfitLoss += bet.stake * (bet.odds - 1)
+        } else if (bet.status === 'lost') {
+          totalProfitLoss -= bet.stake
+        }
+      }
+    }
+    
+    const roi = totalStake > 0 ? (totalProfitLoss / totalStake) * 100 : 0
+
     // Calculate streak
     let streak = 0
     const resolvedBets = bets?.filter(b => ['won', 'lost'].includes(b.status)) || []
@@ -197,7 +225,10 @@ export async function GET(request: NextRequest) {
         lost,
         winrate: Math.round(winrate * 10) / 10,
         streak,
-        valueBets
+        valueBets,
+        roi: Math.round(roi * 10) / 10,
+        totalStake: Math.round(totalStake * 100) / 100,
+        totalProfitLoss: Math.round(totalProfitLoss * 100) / 100
       }
     })
 

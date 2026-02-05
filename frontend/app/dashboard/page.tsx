@@ -15,7 +15,8 @@ import {
   Edit3,
   Loader2,
   MessageCircle,
-  Zap
+  Zap,
+  DollarSign
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import AddBetModal from '@/components/AddBetModal'
@@ -46,6 +47,9 @@ interface Stats {
   winrate: number
   streak: number
   valueBets: number
+  roi: number
+  totalStake: number
+  totalProfitLoss: number
 }
 
 
@@ -53,7 +57,7 @@ export default function DashboardPage() {
   const supabase = createClient()
   const [userId, setUserId] = useState<string | null>(null)
   const [bets, setBets] = useState<Bet[]>([])
-  const [stats, setStats] = useState<Stats>({ total: 0, pending: 0, won: 0, lost: 0, winrate: 0, streak: 0, valueBets: 0 })
+  const [stats, setStats] = useState<Stats>({ total: 0, pending: 0, won: 0, lost: 0, winrate: 0, streak: 0, valueBets: 0, roi: 0, totalStake: 0, totalProfitLoss: 0 })
   const [loading, setLoading] = useState(true)
   const [showAddModal, setShowAddModal] = useState(false)
   const [showResultModal, setShowResultModal] = useState<string | null>(null)
@@ -169,37 +173,51 @@ export default function DashboardPage() {
     <AppShell title="Dashboard" headerContent={headerContent}>
       <div className="max-w-7xl mx-auto p-4 sm:p-6">
         {/* Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <div className="bg-dark-surface border border-dark-border rounded-xl p-6">
-            <div className="flex items-center justify-between mb-4">
-              <BarChart3 className="text-blue-400" size={24} />
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+          <div className="bg-dark-surface border border-dark-border rounded-xl p-5">
+            <div className="flex items-center justify-between mb-3">
+              <BarChart3 className="text-blue-400" size={22} />
               <span className="text-xs text-gray-500">Total</span>
             </div>
             <p className="text-2xl font-bold">{stats.total}</p>
             <p className="text-sm text-gray-400">Apostas registradas</p>
           </div>
 
-          <div className="bg-dark-surface border border-dark-border rounded-xl p-6">
-            <div className="flex items-center justify-between mb-4">
-              <TrendingUp className="text-green-400" size={24} />
+          <div className="bg-dark-surface border border-dark-border rounded-xl p-5">
+            <div className="flex items-center justify-between mb-3">
+              <TrendingUp className="text-green-400" size={22} />
               <span className="text-xs text-gray-500">{stats.won}W / {stats.lost}L</span>
             </div>
             <p className="text-2xl font-bold">{stats.winrate}%</p>
             <p className="text-sm text-gray-400">Taxa de acerto</p>
           </div>
 
-          <div className="bg-dark-surface border border-dark-border rounded-xl p-6">
-            <div className="flex items-center justify-between mb-4">
-              <Diamond className="text-yellow-400" size={24} />
+          {/* ROI Card */}
+          <div className="bg-dark-surface border border-dark-border rounded-xl p-5">
+            <div className="flex items-center justify-between mb-3">
+              <DollarSign className={stats.roi >= 0 ? "text-green-400" : "text-red-400"} size={22} />
+              <span className="text-xs text-gray-500">ROI</span>
+            </div>
+            <p className={`text-2xl font-bold ${stats.roi >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+              {stats.roi >= 0 ? '+' : ''}{stats.roi}%
+            </p>
+            <p className="text-sm text-gray-400">
+              {stats.totalProfitLoss >= 0 ? '+' : ''}R${stats.totalProfitLoss.toFixed(2)}
+            </p>
+          </div>
+
+          <div className="bg-dark-surface border border-dark-border rounded-xl p-5">
+            <div className="flex items-center justify-between mb-3">
+              <Diamond className="text-yellow-400" size={22} />
               <span className="text-xs text-gray-500">Value</span>
             </div>
             <p className="text-2xl font-bold">{stats.valueBets}</p>
             <p className="text-sm text-gray-400">Apostas com valor</p>
           </div>
 
-          <div className="bg-dark-surface border border-dark-border rounded-xl p-6">
-            <div className="flex items-center justify-between mb-4">
-              <Flame className="text-orange-400" size={24} />
+          <div className="bg-dark-surface border border-dark-border rounded-xl p-5">
+            <div className="flex items-center justify-between mb-3">
+              <Flame className="text-orange-400" size={22} />
               <span className="text-xs text-gray-500">Streak</span>
             </div>
             <p className="text-2xl font-bold">{stats.streak}</p>

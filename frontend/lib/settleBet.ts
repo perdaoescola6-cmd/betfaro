@@ -112,20 +112,66 @@ export function settleBet(marketKey: string, fixtureData: FixtureData): BetStatu
 
 /**
  * Normalize market key to standard format
- * Handles variations like 'over_2_5' -> 'over_2_5_ft'
+ * Handles all variations including Portuguese terms
+ * 
+ * SUPPORTED MARKETS:
+ * - over_0_5, over_1_5, over_2_5, over_3_5 (FT)
+ * - under_0_5, under_1_5, under_2_5, under_3_5 (FT)
+ * - btts_yes, btts_no, btts_sim, btts_nao
+ * - home_win, draw, away_win, vitoria_casa, empate, vitoria_fora
+ * - dc_1x, dc_x2, dc_12, dupla_chance_1x, dupla_chance_x2, dupla_chance_12
+ * - over_0_5_ht, over_1_5_ht
+ * - corners_over_8_5, corners_over_9_5
  */
 function normalizeMarketKey(marketKey: string): string {
-  const key = marketKey.toLowerCase().trim()
+  let key = marketKey.toLowerCase().trim()
+  
+  // Remove accents and special characters
+  key = key.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  
+  // ========== PORTUGUESE TO ENGLISH TRANSLATIONS ==========
+  
+  // Result markets (Portuguese)
+  if (key === 'vitoria_casa' || key === 'vitoria casa' || key === 'casa') {
+    return 'home_win_ft'
+  }
+  if (key === 'empate') {
+    return 'draw_ft'
+  }
+  if (key === 'vitoria_fora' || key === 'vitoria fora' || key === 'fora') {
+    return 'away_win_ft'
+  }
+  
+  // BTTS (Portuguese)
+  if (key === 'btts_sim' || key === 'ambas_sim' || key === 'ambas marcam sim') {
+    return 'btts_yes_ft'
+  }
+  if (key === 'btts_nao' || key === 'ambas_nao' || key === 'ambas marcam nao') {
+    return 'btts_no_ft'
+  }
+  
+  // Double chance (Portuguese)
+  if (key === 'dupla_chance_1x' || key === 'dupla chance 1x') {
+    return 'dc_1x_ft'
+  }
+  if (key === 'dupla_chance_x2' || key === 'dupla chance x2') {
+    return 'dc_x2_ft'
+  }
+  if (key === 'dupla_chance_12' || key === 'dupla chance 12') {
+    return 'dc_12_ft'
+  }
+  
+  // ========== STANDARD NORMALIZATIONS ==========
   
   // Over/Under markets without suffix -> assume FT
+  // Matches: over_0_5, over_1_5, over_2_5, over_3_5, under_0_5, etc.
   if (/^(over|under)_\d+_\d+$/.test(key)) {
     return `${key}_ft`
   }
   
-  // BTTS markets without suffix -> assume FT
-  if (key === 'btts_yes' || key === 'btts_no' || key === 'btts_sim' || key === 'btts_nao') {
-    const normalized = key.replace('_sim', '_yes').replace('_nao', '_no')
-    return `${normalized}_ft`
+  // BTTS markets without _ft suffix
+  if (key === 'btts_yes' || key === 'btts_no') {
+    return `${key}_ft`
   }
   
   // Result markets without suffix
@@ -136,6 +182,22 @@ function normalizeMarketKey(marketKey: string): string {
   // Double chance without suffix
   if (/^dc_(1x|x2|12)$/.test(key)) {
     return `${key}_ft`
+  }
+  
+  // Corners without _ft suffix
+  // Matches: corners_over_8_5, corners_over_9_5
+  if (/^corners_over_\d+_\d+$/.test(key)) {
+    return `${key}_ft`
+  }
+  
+  // HT markets - keep as is (already have _ht suffix)
+  if (key.endsWith('_ht')) {
+    return key
+  }
+  
+  // FT markets - keep as is
+  if (key.endsWith('_ft')) {
+    return key
   }
   
   return key
