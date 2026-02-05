@@ -157,6 +157,155 @@ BRAZILIAN_ALIASES_EXPANDED = {
     "gaviao": "tombense",
 }
 
+# Aliases para times da Arábia Saudita (Saudi Pro League)
+SAUDI_ALIASES = {
+    # Al-Hilal
+    "al hilal": "al-hilal",
+    "al-hilal": "al-hilal",
+    "alhilal": "al-hilal",
+    "hilal": "al-hilal",
+    "al hilal sfc": "al-hilal",
+    "al-hilal sfc": "al-hilal",
+    
+    # Al-Nassr
+    "al nassr": "al-nassr",
+    "al-nassr": "al-nassr",
+    "alnassr": "al-nassr",
+    "nassr": "al-nassr",
+    "al nassr fc": "al-nassr",
+    
+    # Al-Ittihad
+    "al ittihad": "al-ittihad",
+    "al-ittihad": "al-ittihad",
+    "alittihad": "al-ittihad",
+    "ittihad": "al-ittihad",
+    "al ittihad jeddah": "al-ittihad",
+    
+    # Al-Ahli
+    "al ahli": "al-ahli",
+    "al-ahli": "al-ahli",
+    "alahli": "al-ahli",
+    "ahli": "al-ahli",
+    "al ahli saudi": "al-ahli",
+    "al ahli jeddah": "al-ahli",
+    
+    # Al-Shabab
+    "al shabab": "al-shabab",
+    "al-shabab": "al-shabab",
+    "alshabab": "al-shabab",
+    "shabab": "al-shabab",
+    
+    # Al-Fateh
+    "al fateh": "al-fateh",
+    "al-fateh": "al-fateh",
+    "alfateh": "al-fateh",
+    "fateh": "al-fateh",
+    
+    # Al-Ettifaq
+    "al ettifaq": "al-ettifaq",
+    "al-ettifaq": "al-ettifaq",
+    "alettifaq": "al-ettifaq",
+    "ettifaq": "al-ettifaq",
+    
+    # Al-Taawoun
+    "al taawoun": "al-taawoun",
+    "al-taawoun": "al-taawoun",
+    "altaawoun": "al-taawoun",
+    "taawoun": "al-taawoun",
+    
+    # Al-Khaleej
+    "al khaleej": "al-khaleej",
+    "al-khaleej": "al-khaleej",
+    "alkhaleej": "al-khaleej",
+    "khaleej": "al-khaleej",
+    
+    # Al-Raed
+    "al raed": "al-raed",
+    "al-raed": "al-raed",
+    "alraed": "al-raed",
+    "raed": "al-raed",
+    
+    # Al-Feiha
+    "al feiha": "al-feiha",
+    "al-feiha": "al-feiha",
+    "alfeiha": "al-feiha",
+    "feiha": "al-feiha",
+    "al fayha": "al-feiha",
+    "al-fayha": "al-feiha",
+    
+    # Al-Riyadh
+    "al riyadh": "al-riyadh",
+    "al-riyadh": "al-riyadh",
+    "alriyadh": "al-riyadh",
+    
+    # Al-Hazem / Al-Hazm
+    "al hazem": "al-hazem",
+    "al-hazem": "al-hazem",
+    "alhazem": "al-hazem",
+    "hazem": "al-hazem",
+    "al hazm": "al-hazem",
+    "al-hazm": "al-hazem",
+    
+    # Al-Akhdoud / Al-Okhdood
+    "al akhdoud": "al-akhdoud",
+    "al-akhdoud": "al-akhdoud",
+    "alakhdoud": "al-akhdoud",
+    "akhdoud": "al-akhdoud",
+    "al okhdood": "al-akhdoud",
+    "al-okhdood": "al-akhdoud",
+    "alokhdood": "al-akhdoud",
+    "okhdood": "al-akhdoud",
+    
+    # Al-Qadisiyah
+    "al qadisiyah": "al-qadisiyah",
+    "al-qadisiyah": "al-qadisiyah",
+    "alqadisiyah": "al-qadisiyah",
+    "qadisiyah": "al-qadisiyah",
+    "al quadisiya": "al-qadisiyah",
+    "al-quadisiya": "al-qadisiyah",
+    
+    # Damac
+    "damac": "damac",
+    "damac fc": "damac",
+    
+    # Abha
+    "abha": "abha",
+    "abha club": "abha",
+    
+    # Al-Kholood
+    "al kholood": "al-kholood",
+    "al-kholood": "al-kholood",
+    "alkholood": "al-kholood",
+    "kholood": "al-kholood",
+    
+    # Neom
+    "neom": "neom",
+    "neom fc": "neom",
+}
+
+# IDs oficiais da API-Football para times sauditas
+SAUDI_TEAMS = {
+    "al-hilal": {"id": 2932, "name": "Al-Hilal", "country": "Saudi-Arabia"},
+    "al-nassr": {"id": 2939, "name": "Al-Nassr", "country": "Saudi-Arabia"},
+    "al-ittihad": {"id": 2934, "name": "Al-Ittihad", "country": "Saudi-Arabia"},
+    "al-ahli": {"id": 2933, "name": "Al-Ahli Saudi", "country": "Saudi-Arabia"},
+    "al-shabab": {"id": 2936, "name": "Al-Shabab", "country": "Saudi-Arabia"},
+    "al-fateh": {"id": 2937, "name": "Al-Fateh", "country": "Saudi-Arabia"},
+    "al-ettifaq": {"id": 2935, "name": "Al-Ettifaq", "country": "Saudi-Arabia"},
+    "al-taawoun": {"id": 2938, "name": "Al-Taawoun", "country": "Saudi-Arabia"},
+    "al-khaleej": {"id": 2944, "name": "Al-Khaleej", "country": "Saudi-Arabia"},
+    "al-raed": {"id": 2940, "name": "Al-Raed", "country": "Saudi-Arabia"},
+    "al-feiha": {"id": 2941, "name": "Al-Feiha", "country": "Saudi-Arabia"},
+    "al-riyadh": {"id": 2943, "name": "Al-Riyadh", "country": "Saudi-Arabia"},
+    "al-hazem": {"id": 2942, "name": "Al-Hazem", "country": "Saudi-Arabia"},
+    "al-akhdoud": {"id": 10261, "name": "Al-Akhdoud", "country": "Saudi-Arabia"},
+    "al-qadisiyah": {"id": 2945, "name": "Al-Qadisiyah", "country": "Saudi-Arabia"},
+    "damac": {"id": 10260, "name": "Damac", "country": "Saudi-Arabia"},
+    "abha": {"id": 2946, "name": "Abha", "country": "Saudi-Arabia"},
+    "al-kholood": {"id": 10262, "name": "Al-Kholood", "country": "Saudi-Arabia"},
+    "neom": {"id": 23418, "name": "Neom", "country": "Saudi-Arabia"},
+}
+
 class TeamResolver:
     """
     Resolve nomes de times com alta confiança usando:
@@ -218,6 +367,10 @@ class TeamResolver:
     
     # Usar aliases expandidos do módulo
     BRAZILIAN_ALIASES = BRAZILIAN_ALIASES_EXPANDED
+    
+    # Usar aliases sauditas do módulo
+    SAUDI_ALIASES_MAP = SAUDI_ALIASES
+    SAUDI_TEAMS_MAP = SAUDI_TEAMS
     
     # Indicadores de contexto brasileiro
     BRAZIL_INDICATORS = [
@@ -284,6 +437,12 @@ class TeamResolver:
         """
         normalized = self._normalize(team_name)
         
+        # Also normalize with hyphens preserved for Saudi teams
+        normalized_with_hyphen = team_name.lower().strip()
+        normalized_with_hyphen = re.sub(r'\s+', ' ', normalized_with_hyphen)
+        
+        logger.debug(f"[resolve_local] Input: '{team_name}' -> normalized: '{normalized}', with_hyphen: '{normalized_with_hyphen}'")
+        
         # 1. Verificar alias brasileiro primeiro
         if normalized in self.BRAZILIAN_ALIASES:
             canonical = self.BRAZILIAN_ALIASES[normalized]
@@ -308,22 +467,64 @@ class TeamResolver:
                 "why": f"Time brasileiro identificado: {team['name']}"
             }
         
-        # 3. Busca fuzzy em times brasileiros
+        # 3. Verificar alias saudita (com e sem hífen)
+        for alias_key in [normalized, normalized_with_hyphen]:
+            if alias_key in self.SAUDI_ALIASES_MAP:
+                canonical = self.SAUDI_ALIASES_MAP[alias_key]
+                if canonical in self.SAUDI_TEAMS_MAP:
+                    team = self.SAUDI_TEAMS_MAP[canonical]
+                    logger.info(f"[resolve_local] Saudi alias match: '{team_name}' -> {team['name']}")
+                    return {
+                        "id": team["id"],
+                        "name": team["name"],
+                        "country": team["country"],
+                        "confidence": 0.95,
+                        "why": f"Alias saudita '{team_name}' → {team['name']}"
+                    }
+        
+        # 4. Verificar time saudita direto
+        for key, team in self.SAUDI_TEAMS_MAP.items():
+            if normalized == key.replace('-', ' ') or normalized_with_hyphen == key:
+                logger.info(f"[resolve_local] Saudi direct match: '{team_name}' -> {team['name']}")
+                return {
+                    "id": team["id"],
+                    "name": team["name"],
+                    "country": team["country"],
+                    "confidence": 0.95,
+                    "why": f"Time saudita identificado: {team['name']}"
+                }
+        
+        # 5. Busca fuzzy em times brasileiros
         best_match = None
         best_score = 0
+        best_source = "brasileiro"
+        
         for key, team in self.BRAZILIAN_TEAMS.items():
             score = self._similarity(normalized, key)
             if score > best_score and score >= 0.75:
                 best_score = score
                 best_match = team
+                best_source = "brasileiro"
+        
+        # 6. Busca fuzzy em times sauditas
+        for key, team in self.SAUDI_TEAMS_MAP.items():
+            # Compare with both normalized versions
+            score1 = self._similarity(normalized, key.replace('-', ' '))
+            score2 = self._similarity(normalized_with_hyphen, key)
+            score = max(score1, score2)
+            if score > best_score and score >= 0.75:
+                best_score = score
+                best_match = team
+                best_source = "saudita"
         
         if best_match and (prefer_brazil or best_score >= 0.85):
+            logger.info(f"[resolve_local] Fuzzy match {best_source}: '{team_name}' -> {best_match['name']} ({best_score:.0%})")
             return {
                 "id": best_match["id"],
                 "name": best_match["name"],
                 "country": best_match["country"],
                 "confidence": best_score,
-                "why": f"Fuzzy match brasileiro ({best_score:.0%}): {best_match['name']}"
+                "why": f"Fuzzy match {best_source} ({best_score:.0%}): {best_match['name']}"
             }
         
         return None

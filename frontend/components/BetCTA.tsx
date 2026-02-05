@@ -20,6 +20,7 @@ interface BetCTAProps {
   kickoffAt?: string
   botReco?: BotReco
   suggestedMarket?: string
+  suggestedOdds?: string  // Pre-fill odds when user provides them in chat
   valueFlag?: boolean
   onBetAdded?: () => void
 }
@@ -33,6 +34,7 @@ export default function BetCTA({
   kickoffAt,
   botReco,
   suggestedMarket,
+  suggestedOdds,
   valueFlag,
   onBetAdded
 }: BetCTAProps) {
@@ -143,6 +145,7 @@ export default function BetCTA({
           kickoffAt,
           botReco,
           suggestedMarket,
+          suggestedOdds,
           valueFlag
         }}
       />

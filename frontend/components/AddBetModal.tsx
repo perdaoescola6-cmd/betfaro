@@ -24,6 +24,7 @@ interface AddBetModalProps {
     kickoffAt?: string
     botReco?: BotReco
     suggestedMarket?: string
+    suggestedOdds?: string  // Pre-fill odds when user provides them in chat
     valueFlag?: boolean
   }
 }
@@ -44,6 +45,10 @@ export default function AddBetModal({ isOpen, onClose, onSuccess, prefill }: Add
       setHomeTeam(prefill.homeTeam || '')
       setAwayTeam(prefill.awayTeam || '')
       setMarket(prefill.suggestedMarket || '')
+      // Pre-fill odds if provided by user in chat message
+      if (prefill.suggestedOdds) {
+        setOdds(prefill.suggestedOdds)
+      }
     } else if (isOpen && !prefill) {
       // Reset form for manual entry
       setHomeTeam('')

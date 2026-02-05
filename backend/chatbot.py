@@ -798,7 +798,10 @@ class ChatBot:
         for bet_name, prob in bets[:7]:
             bar = self._create_probability_bar(prob)
             conf = "ALTA" if prob >= 65 else "MÉDIA" if prob >= 50 else "BAIXA"
-            lines.append(f"  {bet_name:<22} {prob:>5.0f}%  {bar}  [{conf}]")
+            # Calculate fair odds: odd_justa = 1 / (prob / 100)
+            fair_odds = round(100 / prob, 2) if prob > 0 else 0
+            fair_odds_str = f"Odd justa: {fair_odds:.2f}" if fair_odds > 0 else ""
+            lines.append(f"  {bet_name:<22} {prob:>5.0f}%  {bar}  [{conf}] {fair_odds_str}")
         
         lines.append("")
         
@@ -1253,13 +1256,25 @@ class ChatBot:
             return "L"
     
     def _get_form_string(self, fixtures: List[Dict], team_id: int) -> str:
-        """Get form string for last games using _get_result"""
+        """Get form string for last games using _get_result
+        
+        Returns PT-BR format: V (Vitória), E (Empate), D (Derrota)
+        """
         form = []
+        
+        # Map W/D/L to PT-BR V/E/D
+        result_map = {
+            "W": "V",  # Vitória
+            "D": "E",  # Empate
+            "L": "D"   # Derrota
+        }
         
         for fixture in fixtures:
             result = self._get_result(fixture, team_id)
             if result:
-                form.append(result)
+                # Convert to PT-BR
+                pt_result = result_map.get(result, result)
+                form.append(pt_result)
                 
                 # Debug log for verification
                 teams = fixture.get("teams", {})

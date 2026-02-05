@@ -13,6 +13,7 @@ interface MatchData {
   fixtureId?: string
   kickoffAt?: string
   suggestedMarket?: string
+  suggestedOdds?: string  // Pre-fill odds when user provides them in chat
   botReco?: {
     market?: string
     prob?: number
@@ -339,12 +340,57 @@ export default function Home() {
           // Use ' vs ' as delimiter (with spaces) to avoid issues with team names containing 'v'
           const matchPattern = /⚽\s*(.+?)\s+vs\s+(.+?)(?:\n|$)/i
           const matchMatch = content.match(matchPattern)
+          
+          // Extract odds from user's original query (e.g., "@1.85", "odd 1.85", "1.85")
+          const oddsPatterns = [
+            /@\s*(\d+[.,]\d+)/,           // @1.85
+            /odd[s]?\s*[:=]?\s*(\d+[.,]\d+)/i,  // odd: 1.85
+            /(\d+[.,]\d{2})(?:\s|$)/       // 1.85 at end
+          ]
+          let extractedOdds: string | undefined
+          for (const pattern of oddsPatterns) {
+            const oddsMatch = query.match(pattern)
+            if (oddsMatch) {
+              const oddValue = parseFloat(oddsMatch[1].replace(',', '.'))
+              if (oddValue >= 1.01 && oddValue <= 100) {
+                extractedOdds = oddValue.toFixed(2)
+                break
+              }
+            }
+          }
+          
+          // Extract market from user's query
+          const marketMappings: { pattern: RegExp; key: string }[] = [
+            { pattern: /over\s*3[.,]5/i, key: 'over_3_5_ft' },
+            { pattern: /over\s*2[.,]5/i, key: 'over_2_5_ft' },
+            { pattern: /over\s*1[.,]5/i, key: 'over_1_5_ft' },
+            { pattern: /over\s*0[.,]5/i, key: 'over_0_5_ft' },
+            { pattern: /under\s*3[.,]5/i, key: 'under_3_5_ft' },
+            { pattern: /under\s*2[.,]5/i, key: 'under_2_5_ft' },
+            { pattern: /under\s*1[.,]5/i, key: 'under_1_5_ft' },
+            { pattern: /under\s*0[.,]5/i, key: 'under_0_5_ft' },
+            { pattern: /btts\s*(sim|yes|s)/i, key: 'btts_yes_ft' },
+            { pattern: /btts\s*(n[aã]o|no|n)/i, key: 'btts_no_ft' },
+            { pattern: /ambas?\s*marcam?\s*(sim|s)?/i, key: 'btts_yes_ft' },
+            { pattern: /ambas?\s*(n[aã]o|no)\s*marcam?/i, key: 'btts_no_ft' },
+            { pattern: /ambos?\s*(n[aã]o|no)\s*marcam?/i, key: 'btts_no_ft' },
+          ]
+          let extractedMarket: string | undefined
+          for (const { pattern, key } of marketMappings) {
+            if (pattern.test(query)) {
+              extractedMarket = key
+              break
+            }
+          }
+          
           if (matchMatch) {
             matchData = {
               homeTeam: matchMatch[1].trim(),
               awayTeam: matchMatch[2].trim(),
               league: data.league,
               fixtureId: data.fixtureId,
+              suggestedMarket: extractedMarket,
+              suggestedOdds: extractedOdds,
             }
           }
         }
@@ -758,6 +804,7 @@ export default function Home() {
                       league={message.matchData.league}
                       kickoffAt={message.matchData.kickoffAt}
                       suggestedMarket={message.matchData.suggestedMarket}
+                      suggestedOdds={message.matchData.suggestedOdds}
                       botReco={message.matchData.botReco}
                     />
                   )}
