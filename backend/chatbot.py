@@ -501,25 +501,36 @@ class ChatBot:
     def _validate_fixtures(self, fixtures: List[Dict], team_id: int, required: int) -> Dict:
         """Validate fixtures - ensure data quality before analysis
         
-        Pipeline "Last 20 Verified":
+        Pipeline "Last N Verified":
         1. Filter only official matches (exclude friendlies, charity, test matches)
         2. Validate date, score, teams
-        3. Sort by date (most recent first)
-        4. Take exactly required number
+        3. Filter only FINISHED games (FT, AET, PEN)
+        4. Sort by date (most recent first) - DETERMINISTIC
+        5. Take exactly required number
+        
+        CRITICAL: This function must be DETERMINISTIC - same input = same output
+        No randomness, no user-specific behavior, no cache issues.
         """
         from datetime import datetime
         
         result = {
             "valid": False,
             "fixtures": [],
+            "fixture_ids": [],  # For debugging - list of fixture IDs used
             "errors": [],
             "date_range": {"start": None, "end": None},
-            "excluded_friendlies": 0
+            "excluded_friendlies": 0,
+            "excluded_unfinished": 0,
+            "excluded_no_score": 0,
+            "total_raw": len(fixtures) if fixtures else 0
         }
         
         if not fixtures:
             result["errors"].append("Nenhum jogo encontrado")
+            logger.warning(f"[VALIDATE] No fixtures provided for team_id={team_id}")
             return result
+        
+        logger.info(f"[VALIDATE] Processing {len(fixtures)} raw fixtures for team_id={team_id}, required={required}")
         
         # Keywords to identify non-official matches
         FRIENDLY_KEYWORDS = [
@@ -531,9 +542,14 @@ class ChatBot:
         # Competition types to exclude
         EXCLUDED_TYPES = ["friendly", "club friendly", "international friendly"]
         
+        # Valid final statuses
+        FINAL_STATUSES = ["FT", "AET", "PEN"]
+        
         valid_fixtures = []
         seen_ids = set()
-        excluded_count = 0
+        excluded_friendly = 0
+        excluded_unfinished = 0
+        excluded_no_score = 0
         
         for fixture in fixtures:
             fixture_data = fixture.get("fixture", {})
@@ -559,13 +575,15 @@ class ChatBot:
             
             # Check if it's a friendly by league type
             if league_type in EXCLUDED_TYPES:
-                excluded_count += 1
+                excluded_friendly += 1
+                logger.debug(f"[VALIDATE] Excluded friendly (type): {fixture_id} - {league_name}")
                 continue
             
             # Check if it's a friendly by league name
             is_friendly = any(keyword in league_name for keyword in FRIENDLY_KEYWORDS)
             if is_friendly:
-                excluded_count += 1
+                excluded_friendly += 1
+                logger.debug(f"[VALIDATE] Excluded friendly (name): {fixture_id} - {league_name}")
                 continue
             
             # ═══════════════════════════════════════════════════════════════
@@ -582,18 +600,22 @@ class ChatBot:
                 continue
             
             # ═══════════════════════════════════════════════════════════════
-            # VALIDATION 4: Check game is finished
+            # VALIDATION 4: Check game is FINISHED (FT, AET, PEN only)
             # ═══════════════════════════════════════════════════════════════
-            if fixture_status not in ["FT", "AET", "PEN"]:
-                continue  # Skip unfinished games
+            if fixture_status not in FINAL_STATUSES:
+                excluded_unfinished += 1
+                logger.debug(f"[VALIDATE] Excluded unfinished: {fixture_id} - status={fixture_status}")
+                continue
             
             # ═══════════════════════════════════════════════════════════════
-            # VALIDATION 5: Check goals are valid
+            # VALIDATION 5: Check goals are valid (not None)
             # ═══════════════════════════════════════════════════════════════
             home_goals = goals.get("home")
             away_goals = goals.get("away")
             if home_goals is None or away_goals is None:
-                continue  # Skip games without score
+                excluded_no_score += 1
+                logger.debug(f"[VALIDATE] Excluded no score: {fixture_id}")
+                continue
             
             # ═══════════════════════════════════════════════════════════════
             # VALIDATION 6: Check teams are valid
@@ -603,19 +625,37 @@ class ChatBot:
             if not home_team.get("id") or not away_team.get("id"):
                 continue
             
-            # Passed all validations - this is an official match
+            # Passed all validations - this is an official finished match
             valid_fixtures.append(fixture)
         
-        result["excluded_friendlies"] = excluded_count
+        result["excluded_friendlies"] = excluded_friendly
+        result["excluded_unfinished"] = excluded_unfinished
+        result["excluded_no_score"] = excluded_no_score
         
-        # Sort by date (most recent first)
+        logger.info(f"[VALIDATE] After filtering: {len(valid_fixtures)} valid fixtures (excluded: {excluded_friendly} friendlies, {excluded_unfinished} unfinished, {excluded_no_score} no score)")
+        
+        # ═══════════════════════════════════════════════════════════════
+        # SORT BY DATE (most recent first) - DETERMINISTIC
+        # Secondary sort by fixture_id for absolute determinism
+        # ═══════════════════════════════════════════════════════════════
         valid_fixtures.sort(
-            key=lambda x: x.get("fixture", {}).get("date", ""),
+            key=lambda x: (x.get("fixture", {}).get("date", ""), x.get("fixture", {}).get("id", 0)),
             reverse=True
         )
         
         # Take exactly the required number
         final_fixtures = valid_fixtures[:required]
+        
+        # Store fixture IDs for debugging/verification
+        result["fixture_ids"] = [f.get("fixture", {}).get("id") for f in final_fixtures]
+        
+        # Log the fixtures being used
+        logger.info(f"[VALIDATE] Using {len(final_fixtures)} fixtures: {result['fixture_ids']}")
+        for i, f in enumerate(final_fixtures):
+            fd = f.get("fixture", {})
+            teams = f.get("teams", {})
+            goals = f.get("goals", {})
+            logger.info(f"[VALIDATE] #{i+1}: ID={fd.get('id')} | {fd.get('date', '')[:10]} | {teams.get('home', {}).get('name', '?')} {goals.get('home', '?')}-{goals.get('away', '?')} {teams.get('away', {}).get('name', '?')} | Status={fd.get('status', {}).get('short', '?')}")
         
         if len(final_fixtures) < required:
             result["errors"].append(f"Apenas {len(final_fixtures)} jogos válidos encontrados (necessário: {required})")
@@ -760,16 +800,22 @@ class ChatBot:
         avg_over_1_5 = (stats_a['over_1_5'] + stats_b['over_1_5']) / 2
         avg_btts = (stats_a['btts'] + stats_b['btts']) / 2
         
-        lines.append("📊 Estatísticas")
+        lines.append("📊 Estatísticas (últimos 10 jogos)")
         lines.append("─────────────────────────────────────────────────────────")
         lines.append(f"  {'Mercado':<14} {team_a['name'][:10]:<12} {team_b['name'][:10]:<12} {'Média':<10}")
         lines.append(f"  {'─'*50}")
-        lines.append(f"  {'Over 2.5':<14} {stats_a['over_2_5']:>6.0f}%      {stats_b['over_2_5']:>6.0f}%      {avg_over_2_5:>6.0f}%")
-        lines.append(f"  {'Over 1.5':<14} {stats_a['over_1_5']:>6.0f}%      {stats_b['over_1_5']:>6.0f}%      {avg_over_1_5:>6.0f}%")
-        lines.append(f"  {'BTTS':<14} {stats_a['btts']:>6.0f}%      {stats_b['btts']:>6.0f}%      {avg_btts:>6.0f}%")
+        lines.append(f"  {'Over 2.5 (FT)':<14} {stats_a['over_2_5']:>6.0f}%      {stats_b['over_2_5']:>6.0f}%      {avg_over_2_5:>6.0f}%")
+        lines.append(f"  {'Over 1.5 (FT)':<14} {stats_a['over_1_5']:>6.0f}%      {stats_b['over_1_5']:>6.0f}%      {avg_over_1_5:>6.0f}%")
+        lines.append(f"  {'BTTS (FT)':<14} {stats_a['btts']:>6.0f}%      {stats_b['btts']:>6.0f}%      {avg_btts:>6.0f}%")
         lines.append(f"  {'Média Gols':<14} {stats_a['avg_total_goals']:>6.1f}       {stats_b['avg_total_goals']:>6.1f}       {(stats_a['avg_total_goals']+stats_b['avg_total_goals'])/2:>6.1f}")
+        lines.append(f"  {'Gols Marcados':<14} {stats_a['avg_goals_for']:>6.1f}       {stats_b['avg_goals_for']:>6.1f}")
+        lines.append(f"  {'Gols Sofridos':<14} {stats_a['avg_goals_against']:>6.1f}       {stats_b['avg_goals_against']:>6.1f}")
         lines.append(f"  {'Vitórias':<14} {stats_a['win_rate']:>6.0f}%      {stats_b['win_rate']:>6.0f}%")
         lines.append(f"  {'Clean Sheet':<14} {stats_a['clean_sheet_rate']:>6.0f}%      {stats_b['clean_sheet_rate']:>6.0f}%")
+        lines.append("")
+        
+        # Add legend for form
+        lines.append("  📝 Legenda: V=Vitória, E=Empate, D=Derrota")
         lines.append("")
         
         # ═══════════════════════════════════════════════════════════════
@@ -1089,43 +1135,79 @@ class ChatBot:
         return "\n".join(lines)
     
     def _calculate_team_stats(self, fixtures: List[Dict], team_id: int) -> Dict:
-        """Calculate team statistics"""
+        """Calculate team statistics from EXACTLY the fixtures provided.
+        
+        CRITICAL RULES:
+        - Over/Under 2.5 (FT) = total goals of the MATCH (home + away), NOT team's goals
+        - BTTS = home_goals > 0 AND away_goals > 0 (both teams scored in the match)
+        - Win/Draw/Loss = from perspective of team_id
+        - All stats calculated from the SAME fixture set
+        
+        Returns dict with:
+        - over_0_5, over_1_5, over_2_5, over_3_5: % of matches with total goals > X
+        - btts: % of matches where both teams scored
+        - win_rate, draw_rate, loss_rate: % from team's perspective
+        - clean_sheet_rate: % where team conceded 0
+        - failed_to_score_rate: % where team scored 0
+        - avg_goals_for: average goals scored BY the team
+        - avg_goals_against: average goals conceded BY the team
+        - avg_total_goals: average total goals per match (home + away)
+        """
         if not fixtures:
-            return {}
+            return {
+                "over_0_5": 0, "over_1_5": 0, "over_2_5": 0, "over_3_5": 0,
+                "btts": 0, "win_rate": 0, "draw_rate": 0, "loss_rate": 0,
+                "clean_sheet_rate": 0, "failed_to_score_rate": 0,
+                "avg_goals_for": 0, "avg_goals_against": 0, "avg_total_goals": 0,
+                "fixtures_used": 0
+            }
         
-        stats = {
-            "over_0_5": 0,
-            "over_1_5": 0,
-            "over_2_5": 0,
-            "over_3_5": 0,
-            "btts": 0,
-            "win_rate": 0,
-            "draw_rate": 0,
-            "loss_rate": 0,
-            "clean_sheet_rate": 0,
-            "failed_to_score_rate": 0,
-            "avg_goals_for": 0,
-            "avg_goals_against": 0,
-            "avg_total_goals": 0,
-        }
-        
+        # Counters
+        over_0_5_count = 0
+        over_1_5_count = 0
+        over_2_5_count = 0
+        over_3_5_count = 0
+        btts_count = 0
+        wins = 0
+        draws = 0
+        losses = 0
+        clean_sheets = 0
+        failed_to_score = 0
         total_goals_for = 0
         total_goals_against = 0
-        wins = draws = losses = 0
-        clean_sheets = failed_to_score = 0
+        total_match_goals = 0
         
-        for fixture in fixtures:
+        # Log fixtures being analyzed for debugging
+        logger.info(f"[STATS] Calculating stats for team_id={team_id} from {len(fixtures)} fixtures")
+        
+        for i, fixture in enumerate(fixtures):
             teams = fixture.get("teams", {})
             goals = fixture.get("goals", {})
             home_team = teams.get("home", {})
             away_team = teams.get("away", {})
+            fixture_data = fixture.get("fixture", {})
             
-            home_goals = goals.get("home", 0)
-            away_goals = goals.get("away", 0)
-            total_goals = home_goals + away_goals
+            # Get goals - ensure they are integers
+            home_goals = goals.get("home")
+            away_goals = goals.get("away")
             
-            # Determine goals for/against based on team position
-            if home_team.get("id") == team_id:
+            # Skip if goals are None
+            if home_goals is None or away_goals is None:
+                logger.warning(f"[STATS] Skipping fixture {fixture_data.get('id')} - missing goals")
+                continue
+            
+            home_goals = int(home_goals)
+            away_goals = int(away_goals)
+            
+            # TOTAL GOALS OF THE MATCH (for Over/Under calculations)
+            match_total_goals = home_goals + away_goals
+            total_match_goals += match_total_goals
+            
+            # Determine if team was home or away
+            is_home = home_team.get("id") == team_id
+            
+            # Goals FOR and AGAINST from team's perspective
+            if is_home:
                 goals_for = home_goals
                 goals_against = away_goals
             else:
@@ -1135,17 +1217,27 @@ class ChatBot:
             total_goals_for += goals_for
             total_goals_against += goals_against
             
-            # Over markets
-            if total_goals > 0: stats["over_0_5"] += 1
-            if total_goals > 1: stats["over_1_5"] += 1
-            if total_goals > 2: stats["over_2_5"] += 1
-            if total_goals > 3: stats["over_3_5"] += 1
+            # ═══════════════════════════════════════════════════════════════
+            # OVER/UNDER - Based on MATCH TOTAL (home + away), NOT team's goals
+            # ═══════════════════════════════════════════════════════════════
+            if match_total_goals > 0:
+                over_0_5_count += 1
+            if match_total_goals > 1:
+                over_1_5_count += 1
+            if match_total_goals > 2:
+                over_2_5_count += 1
+            if match_total_goals > 3:
+                over_3_5_count += 1
             
-            # BTTS
-            if goals_for > 0 and goals_against > 0:
-                stats["btts"] += 1
+            # ═══════════════════════════════════════════════════════════════
+            # BTTS - Both teams scored (home > 0 AND away > 0)
+            # ═══════════════════════════════════════════════════════════════
+            if home_goals > 0 and away_goals > 0:
+                btts_count += 1
             
-            # Result
+            # ═══════════════════════════════════════════════════════════════
+            # WIN/DRAW/LOSS - From team's perspective
+            # ═══════════════════════════════════════════════════════════════
             if goals_for > goals_against:
                 wins += 1
             elif goals_for == goals_against:
@@ -1153,27 +1245,48 @@ class ChatBot:
             else:
                 losses += 1
             
-            # Clean sheet / failed to score
+            # ═══════════════════════════════════════════════════════════════
+            # CLEAN SHEET / FAILED TO SCORE
+            # ═══════════════════════════════════════════════════════════════
             if goals_against == 0:
                 clean_sheets += 1
             if goals_for == 0:
                 failed_to_score += 1
+            
+            # Debug log each fixture
+            fixture_date = fixture_data.get("date", "")[:10]
+            result = "W" if goals_for > goals_against else "D" if goals_for == goals_against else "L"
+            logger.debug(f"[STATS] #{i+1} {fixture_date} | {home_team.get('name','?')} {home_goals}-{away_goals} {away_team.get('name','?')} | Team {'H' if is_home else 'A'} | {result} | Total={match_total_goals} | BTTS={'Y' if home_goals > 0 and away_goals > 0 else 'N'}")
         
         # Calculate percentages and averages
         total = len(fixtures)
-        stats["over_0_5"] = (stats["over_0_5"] / total) * 100
-        stats["over_1_5"] = (stats["over_1_5"] / total) * 100
-        stats["over_2_5"] = (stats["over_2_5"] / total) * 100
-        stats["over_3_5"] = (stats["over_3_5"] / total) * 100
-        stats["btts"] = (stats["btts"] / total) * 100
-        stats["win_rate"] = (wins / total) * 100
-        stats["draw_rate"] = (draws / total) * 100
-        stats["loss_rate"] = (losses / total) * 100
-        stats["clean_sheet_rate"] = (clean_sheets / total) * 100
-        stats["failed_to_score_rate"] = (failed_to_score / total) * 100
-        stats["avg_goals_for"] = total_goals_for / total
-        stats["avg_goals_against"] = total_goals_against / total
-        stats["avg_total_goals"] = (total_goals_for + total_goals_against) / total
+        if total == 0:
+            return {
+                "over_0_5": 0, "over_1_5": 0, "over_2_5": 0, "over_3_5": 0,
+                "btts": 0, "win_rate": 0, "draw_rate": 0, "loss_rate": 0,
+                "clean_sheet_rate": 0, "failed_to_score_rate": 0,
+                "avg_goals_for": 0, "avg_goals_against": 0, "avg_total_goals": 0,
+                "fixtures_used": 0
+            }
+        
+        stats = {
+            "over_0_5": (over_0_5_count / total) * 100,
+            "over_1_5": (over_1_5_count / total) * 100,
+            "over_2_5": (over_2_5_count / total) * 100,
+            "over_3_5": (over_3_5_count / total) * 100,
+            "btts": (btts_count / total) * 100,
+            "win_rate": (wins / total) * 100,
+            "draw_rate": (draws / total) * 100,
+            "loss_rate": (losses / total) * 100,
+            "clean_sheet_rate": (clean_sheets / total) * 100,
+            "failed_to_score_rate": (failed_to_score / total) * 100,
+            "avg_goals_for": total_goals_for / total,
+            "avg_goals_against": total_goals_against / total,
+            "avg_total_goals": total_match_goals / total,
+            "fixtures_used": total
+        }
+        
+        logger.info(f"[STATS] Results: Over2.5={stats['over_2_5']:.0f}% BTTS={stats['btts']:.0f}% Wins={stats['win_rate']:.0f}% AvgGoals={stats['avg_total_goals']:.1f}")
         
         return stats
     
