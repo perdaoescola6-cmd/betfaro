@@ -37,7 +37,7 @@ const FINAL_STATUSES = ['FT', 'AET', 'PEN']
 
 /**
  * Main settlement function
- * @param marketKey - The market key (e.g., 'over_2_5_ft')
+ * @param marketKey - The market key (e.g., 'over_2_5' or 'over_2_5_ft')
  * @param fixtureData - Fixture data from API
  * @returns BetStatus - 'won' | 'lost' | 'void' | 'pending'
  */
@@ -71,37 +71,74 @@ export function settleBet(marketKey: string, fixtureData: FixtureData): BetStatu
 
   const ftTotal = goalsHome + goalsAway
 
+  // Normalize market key - add _ft suffix if not present for FT markets
+  // This handles both 'over_2_5' and 'over_2_5_ft' formats
+  const normalizedMarket = normalizeMarketKey(marketKey)
+
   // Route to appropriate settlement logic based on market category
-  if (marketKey.startsWith('over_') && marketKey.endsWith('_ft')) {
-    return settleOverFT(marketKey, ftTotal)
+  if (normalizedMarket.startsWith('over_') && normalizedMarket.endsWith('_ft')) {
+    return settleOverFT(normalizedMarket, ftTotal)
   }
 
-  if (marketKey.startsWith('under_') && marketKey.endsWith('_ft')) {
-    return settleUnderFT(marketKey, ftTotal)
+  if (normalizedMarket.startsWith('under_') && normalizedMarket.endsWith('_ft')) {
+    return settleUnderFT(normalizedMarket, ftTotal)
   }
 
-  if (marketKey.startsWith('btts_')) {
-    return settleBTTS(marketKey, goalsHome, goalsAway)
+  if (normalizedMarket.startsWith('btts_')) {
+    return settleBTTS(normalizedMarket, goalsHome, goalsAway)
   }
 
-  if (marketKey === 'home_win_ft' || marketKey === 'draw_ft' || marketKey === 'away_win_ft') {
-    return settleResultFT(marketKey, goalsHome, goalsAway)
+  if (normalizedMarket === 'home_win_ft' || normalizedMarket === 'draw_ft' || normalizedMarket === 'away_win_ft' ||
+      normalizedMarket === 'home_win' || normalizedMarket === 'draw' || normalizedMarket === 'away_win') {
+    return settleResultFT(normalizedMarket, goalsHome, goalsAway)
   }
 
-  if (marketKey.startsWith('dc_')) {
-    return settleDoubleChance(marketKey, goalsHome, goalsAway)
+  if (normalizedMarket.startsWith('dc_')) {
+    return settleDoubleChance(normalizedMarket, goalsHome, goalsAway)
   }
 
-  if (marketKey.endsWith('_ht')) {
-    return settleHT(marketKey, fixtureData)
+  if (normalizedMarket.endsWith('_ht')) {
+    return settleHT(normalizedMarket, fixtureData)
   }
 
-  if (marketKey.startsWith('corners_')) {
-    return settleCorners(marketKey, fixtureData)
+  if (normalizedMarket.startsWith('corners_')) {
+    return settleCorners(normalizedMarket, fixtureData)
   }
 
   // Unknown market - can't settle
+  console.warn(`[settleBet] Unknown market: ${marketKey} (normalized: ${normalizedMarket})`)
   return 'void'
+}
+
+/**
+ * Normalize market key to standard format
+ * Handles variations like 'over_2_5' -> 'over_2_5_ft'
+ */
+function normalizeMarketKey(marketKey: string): string {
+  const key = marketKey.toLowerCase().trim()
+  
+  // Over/Under markets without suffix -> assume FT
+  if (/^(over|under)_\d+_\d+$/.test(key)) {
+    return `${key}_ft`
+  }
+  
+  // BTTS markets without suffix -> assume FT
+  if (key === 'btts_yes' || key === 'btts_no' || key === 'btts_sim' || key === 'btts_nao') {
+    const normalized = key.replace('_sim', '_yes').replace('_nao', '_no')
+    return `${normalized}_ft`
+  }
+  
+  // Result markets without suffix
+  if (key === 'home_win' || key === 'draw' || key === 'away_win') {
+    return `${key}_ft`
+  }
+  
+  // Double chance without suffix
+  if (/^dc_(1x|x2|12)$/.test(key)) {
+    return `${key}_ft`
+  }
+  
+  return key
 }
 
 /**
