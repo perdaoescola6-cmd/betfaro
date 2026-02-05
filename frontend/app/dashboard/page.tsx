@@ -268,7 +268,7 @@ export default function DashboardPage() {
                         <span>{getMarketLabel(bet.market)}</span>
                         <span>@{bet.odds.toFixed(2)}</span>
                         {bet.stake && <span>R${bet.stake}</span>}
-                        <span>{new Date(bet.created_at).toLocaleDateString('pt-BR')}</span>
+                        <span>{new Date(bet.created_at).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })}</span>
                       </div>
                     </div>
                     <div className="flex items-center space-x-3">

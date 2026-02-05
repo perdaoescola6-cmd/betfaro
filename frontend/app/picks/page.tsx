@@ -438,7 +438,7 @@ export default function PicksPage() {
             <div className="mb-4 text-xs text-gray-500 flex items-center gap-4">
               <span className="flex items-center gap-1">
                 <Clock size={12} />
-                Atualizado: {new Date(meta.generated_at).toLocaleString('pt-BR')}
+                Atualizado: {new Date(meta.generated_at).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}
               </span>
               <span>{meta.analyzed_success} jogos analisados</span>
             </div>

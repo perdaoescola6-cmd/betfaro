@@ -92,24 +92,40 @@ export default function Home() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, isLoading])
 
-  // Helper to format kickoff time
+  // Helper to format kickoff time in Brazil timezone (GMT-3)
   const formatKickoffDisplay = (dateStr: string | undefined): string => {
     if (!dateStr) return ''
     try {
       const date = new Date(dateStr)
+      if (isNaN(date.getTime())) return ''
+      
+      // Format time in Brazil timezone
+      const timeStr = date.toLocaleString('pt-BR', {
+        timeZone: 'America/Sao_Paulo',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+      })
+      
+      // Get today and tomorrow in Brazil timezone
       const now = new Date()
-      const isToday = date.toDateString() === now.toDateString()
-      const tomorrow = new Date(now)
-      tomorrow.setDate(tomorrow.getDate() + 1)
-      const isTomorrow = date.toDateString() === tomorrow.toDateString()
+      const todayBR = now.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })
+      const dateBR = date.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })
       
-      const hours = date.getHours().toString().padStart(2, '0')
-      const minutes = date.getMinutes().toString().padStart(2, '0')
-      const time = `${hours}:${minutes}`
+      // Calculate tomorrow in Brazil timezone
+      const tomorrowDate = new Date(now.getTime() + 24 * 60 * 60 * 1000)
+      const tomorrowBR = tomorrowDate.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })
       
-      if (isToday) return `Hoje • ${time}`
-      if (isTomorrow) return `Amanhã • ${time}`
-      return `${['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'][date.getDay()]} • ${time}`
+      if (dateBR === todayBR) return `Hoje • ${timeStr}`
+      if (dateBR === tomorrowBR) return `Amanhã • ${timeStr}`
+      
+      // Get day of week in Brazil timezone
+      const dayName = date.toLocaleDateString('pt-BR', { 
+        timeZone: 'America/Sao_Paulo', 
+        weekday: 'short' 
+      }).replace('.', '')
+      
+      return `${dayName} • ${timeStr}`
     } catch {
       return ''
     }
