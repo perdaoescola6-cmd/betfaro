@@ -68,29 +68,20 @@ interface Suggestion {
   tier: number
 }
 
-function formatKickoffDisplay(dateStr: string | undefined): string {
-  if (!dateStr) return ''
+/**
+ * Ensure kickoff time is in ISO UTC format
+ * The frontend will convert to user's local timezone
+ */
+function ensureIsoUtc(dateStr: string | undefined): string | undefined {
+  if (!dateStr) return undefined
   
   try {
     const date = new Date(dateStr)
-    const now = new Date()
-    
-    const isToday = date.toDateString() === now.toDateString()
-    const tomorrow = new Date(now)
-    tomorrow.setDate(tomorrow.getDate() + 1)
-    const isTomorrow = date.toDateString() === tomorrow.toDateString()
-    
-    const hours = date.getHours().toString().padStart(2, '0')
-    const minutes = date.getMinutes().toString().padStart(2, '0')
-    const time = `${hours}:${minutes}`
-    
-    if (isToday) return `Hoje • ${time}`
-    if (isTomorrow) return `Amanhã • ${time}`
-    
-    const dayNames = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
-    return `${dayNames[date.getDay()]} • ${time}`
+    if (isNaN(date.getTime())) return undefined
+    // Return ISO string (always UTC with Z suffix)
+    return date.toISOString()
   } catch {
-    return ''
+    return undefined
   }
 }
 
@@ -157,7 +148,8 @@ export async function GET(request: NextRequest) {
     
     console.log(`[suggestions] Filtered ${filteredPast} past games, ${futureSuggestions.length} remaining`)
     
-    // Map to our format with tier and kickoffDisplay
+    // Map to our format with tier
+    // NOTE: kickoffAt is returned as ISO UTC - frontend handles timezone conversion
     const suggestions: Suggestion[] = futureSuggestions.map(s => {
       const leagueName = s.league || 'Unknown'
       const shortName = LEAGUE_SHORT_NAMES[leagueName] || leagueName.split(' ')[0]
@@ -167,8 +159,8 @@ export async function GET(request: NextRequest) {
         label: s.label,
         query: s.query,
         league: shortName,
-        kickoffAt: s.time,
-        kickoffDisplay: formatKickoffDisplay(s.time),
+        kickoffAt: ensureIsoUtc(s.time), // Always return ISO UTC
+        kickoffDisplay: '', // Frontend will format this based on user's timezone
         tier
       }
     })

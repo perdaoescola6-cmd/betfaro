@@ -92,36 +92,46 @@ export default function Home() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, isLoading])
 
-  // Helper to format kickoff time in Brazil timezone (GMT-3)
+  // Import date utilities that use user's local timezone
+  // These are defined in @/lib/dateUtils.ts
+  
+  // Helper to format kickoff time in user's local timezone
   const formatKickoffDisplay = (dateStr: string | undefined): string => {
     if (!dateStr) return ''
     try {
       const date = new Date(dateStr)
       if (isNaN(date.getTime())) return ''
       
-      // Format time in Brazil timezone
+      // Get user's timezone
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/Sao_Paulo'
+      
+      // Format time in user's timezone
       const timeStr = date.toLocaleString('pt-BR', {
-        timeZone: 'America/Sao_Paulo',
+        timeZone: tz,
         hour: '2-digit',
         minute: '2-digit',
         hour12: false
       })
       
-      // Get today and tomorrow in Brazil timezone
+      // Convert dates to YYYY-MM-DD in user's timezone for comparison
+      const toYMD = (d: Date) => new Intl.DateTimeFormat('en-CA', {
+        timeZone: tz,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      }).format(d)
+      
       const now = new Date()
-      const todayBR = now.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })
-      const dateBR = date.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })
+      const dateYMD = toYMD(date)
+      const todayYMD = toYMD(now)
+      const tomorrowYMD = toYMD(new Date(now.getTime() + 24 * 60 * 60 * 1000))
       
-      // Calculate tomorrow in Brazil timezone
-      const tomorrowDate = new Date(now.getTime() + 24 * 60 * 60 * 1000)
-      const tomorrowBR = tomorrowDate.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })
+      if (dateYMD === todayYMD) return `Hoje • ${timeStr}`
+      if (dateYMD === tomorrowYMD) return `Amanhã • ${timeStr}`
       
-      if (dateBR === todayBR) return `Hoje • ${timeStr}`
-      if (dateBR === tomorrowBR) return `Amanhã • ${timeStr}`
-      
-      // Get day of week in Brazil timezone
+      // Get day of week in user's timezone
       const dayName = date.toLocaleDateString('pt-BR', { 
-        timeZone: 'America/Sao_Paulo', 
+        timeZone: tz, 
         weekday: 'short' 
       }).replace('.', '')
       
@@ -131,7 +141,7 @@ export default function Home() {
     }
   }
 
-  // Helper to check if game is in the future
+  // Helper to check if game is in the future (UTC comparison)
   const isFutureGame = (dateStr: string | undefined): boolean => {
     if (!dateStr) return true
     try {
