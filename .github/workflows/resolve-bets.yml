@@ -14,10 +14,15 @@ jobs:
     
     steps:
       - name: Call Bet Resolver API
+        env:
+          RESOLVE_URL: https://www.betfaro.com.br/api/bets/resolve
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
-          response=$(curl -s -w "\n%{http_code}" -X POST \
-            "https://betfaro.com.br/api/bets/resolve" \
-            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+          echo "🚀 Calling: $RESOLVE_URL"
+          
+          # Use -L to follow redirects, -i to show headers for debugging
+          response=$(curl -s -L -w "\n%{http_code}" -X POST "$RESOLVE_URL" \
+            -H "Authorization: Bearer $CRON_SECRET" \
             -H "Content-Type: application/json")
           
           http_code=$(echo "$response" | tail -n1)
